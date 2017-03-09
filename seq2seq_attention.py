@@ -35,9 +35,9 @@ UNK_ID = 3
 _START_VOCAB = [_PAD, _GO, _EOS, _UNK]
 plot_data = True
 # Model
-buckets = [(9, 10), (9, 15), (9, 20), (9, 30)]
-num_layers = 1
-size = 2 #embedding vector size
+buckets = [(2, 2), (2, 2), (2, 2), (4, 5)]
+num_layers = 3
+size = 1 #embedding vector size
 # Training
 learning_rate = 0.5
 learning_rate_decay_factor = 0.99
@@ -142,8 +142,13 @@ def main_train():
     print()
     if(max_train_data_size!=None):
         print ("Read training data into buckets (limit: %d)" % max_train_data_size)
+        '''
+        data_set: a list of length len(_buckets); data_set[n] contains a list of
+      (source, target) pairs read from the provided data files that fit
+      into the n-th bucket, i.e., such that len(source) < _buckets[n][0] and
+      len(target) < _buckets[n][1]; source and target are lists of token-ids.
+        '''
     train_set = read_data(ask_train, ans_train, buckets, EOS_ID, max_train_data_size)
-
     train_bucket_sizes = [len(train_set[b]) for b in xrange(len(buckets))]
     train_total_size = float(sum(train_bucket_sizes))
     print('the num of training data in each buckets: %s' % train_bucket_sizes)    # [239121, 1344322, 5239557, 10445326]

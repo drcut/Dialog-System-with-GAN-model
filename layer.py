@@ -262,13 +262,15 @@ class Seq2seqWrapper(Layer):
         self.encoder_inputs = []
         self.decoder_inputs = []
         self.target_weights = []
+        #each step for an loop
         for i in xrange(buckets[-1][0]):  # Last bucket is the biggest one.
           self.encoder_inputs.append(tf.placeholder(tf.float32, shape=[batch_size,size],
                                                     name="encoder{0}".format(i)))
         for i in xrange(buckets[-1][1] + 1):
           self.decoder_inputs.append(tf.placeholder(tf.float32, shape=[batch_size,size],
                                                     name="decoder{0}".format(i)))
-          self.target_weights.append(tf.placeholder(tf.float32, shape=[batch_size,size],
+          #[decoder_size*batch_size]
+          self.target_weights.append(tf.placeholder(tf.float32, shape=[batch_size],
                                                     name="weight{0}".format(i)))
 
         # Our targets are decoder inputs shifted by one.
@@ -355,9 +357,11 @@ class Seq2seqWrapper(Layer):
     # Input feed: encoder inputs, decoder inputs, target_weights, as provided.
     input_feed = {}
     for l in xrange(encoder_size):
-      input_feed[self.encoder_inputs[l].name] = encoder_inputs[l]
+        #[encoder_size*batch_size]
+      input_feed[self.encoder_inputs[l].name] = [encoder_inputs[l]]
     for l in xrange(decoder_size):
-      input_feed[self.decoder_inputs[l].name] = decoder_inputs[l]
+      input_feed[self.decoder_inputs[l].name] = [decoder_inputs[l]]
+      #[decoder_size*batch_size]
       input_feed[self.target_weights[l].name] = target_weights[l]
     # print(self.encoder_inputs[l].name)
     # print(self.decoder_inputs[l].name)
@@ -365,7 +369,7 @@ class Seq2seqWrapper(Layer):
 
     # Since our targets are decoder inputs shifted by one, we need one more.
     last_target = self.decoder_inputs[decoder_size].name
-    input_feed[last_target] = np.zeros([self.batch_size], dtype=np.int32)
+    input_feed[last_target] = [np.zeros([self.batch_size], dtype=np.int32)]
     # print('last_target', last_target)
 
     # Output feed: depends on whether we do a backward step or not.
@@ -416,10 +420,13 @@ class Seq2seqWrapper(Layer):
     # Get a random batch of encoder and decoder inputs from data,
     # pad them if needed, reverse encoder inputs and add GO to decoder.
     for _ in xrange(self.batch_size):
+        #encoder_input and decoder_input is a single sentence
       encoder_input, decoder_input = random.choice(data[bucket_id])
 
       # Encoder inputs are padded and then reversed.
       encoder_pad = [PAD_ID] * (encoder_size - len(encoder_input))
+      #encoder_inputs is a list(batch_size elements) of ask sentence(which is list)
+      #reversed the order of input
       encoder_inputs.append(list(reversed(encoder_input + encoder_pad)))
 
       # Decoder inputs get an extra "GO" symbol, and are padded then.
@@ -429,15 +436,21 @@ class Seq2seqWrapper(Layer):
     # Now we create batch-major vectors from the data selected above.
     batch_encoder_inputs, batch_decoder_inputs, batch_weights = [], [], []
     # Batch encoder inputs are just re-indexed encoder_inputs.
+    #batch_encoder_inputs:shape[encoder_size*batch_size],each element is a size
     for length_idx in xrange(encoder_size):
       batch_encoder_inputs.append(
-          np.array([encoder_inputs[batch_idx][length_idx]
-                    for batch_idx in xrange(self.batch_size)], dtype=np.int32))
+          #np.array([encoder_inputs[batch_idx][length_idx]
+          list([encoder_inputs[batch_idx][length_idx]
+                    for batch_idx in xrange(self.batch_size)]))
     # Batch decoder inputs are re-indexed decoder_inputs, we create weights.
     for length_idx in xrange(decoder_size):
       batch_decoder_inputs.append(
-          np.array([decoder_inputs[batch_idx][length_idx]
-                    for batch_idx in xrange(self.batch_size)], dtype=np.int32))
+          #np.array([decoder_inputs[batch_idx][length_idx]
+          list([decoder_inputs[batch_idx][length_idx]
+                    for batch_idx in xrange(self.batch_size)]))
+      #print "list size:"
+      #print decoder_inputs[0][length_idx]
+      #print len(decoder_inputs[0][length_idx])
       # Create target_weights to be 0 for targets that are padding.
       batch_weight = np.ones(self.batch_size, dtype=np.float32)
       for batch_idx in xrange(self.batch_size):
@@ -448,4 +461,5 @@ class Seq2seqWrapper(Layer):
         if length_idx == decoder_size - 1 or target == PAD_ID:
           batch_weight[batch_idx] = 0.0
       batch_weights.append(batch_weight)
+      #batch_weight:[decoder_size*batch_size]
     return batch_encoder_inputs, batch_decoder_inputs, batch_weights
