@@ -236,8 +236,6 @@ class Seq2seqWrapper(Layer):
           except:
             cell = tf.nn.rnn_cell.MultiRNNCell([single_cell] * num_layers)
 
-        # ============== Seq Decode Layer ============
-        # The seq2seq function: we use embedding for the input and attention.
         def seq2seq_f(encoder_inputs, decoder_inputs, do_decode):
           #loop_function: 
           #If not None, this function will be applied to i-th output in order to generate i+1-th input, 
@@ -265,12 +263,12 @@ class Seq2seqWrapper(Layer):
         self.decoder_inputs = []
         self.target_weights = []
         for i in xrange(buckets[-1][0]):  # Last bucket is the biggest one.
-          self.encoder_inputs.append(tf.placeholder(tf.int32, shape=[None],
+          self.encoder_inputs.append(tf.placeholder(tf.float32, shape=[batch_size,size],
                                                     name="encoder{0}".format(i)))
         for i in xrange(buckets[-1][1] + 1):
-          self.decoder_inputs.append(tf.placeholder(tf.int32, shape=[None],
+          self.decoder_inputs.append(tf.placeholder(tf.float32, shape=[batch_size,size],
                                                     name="decoder{0}".format(i)))
-          self.target_weights.append(tf.placeholder(tf.float32, shape=[None],
+          self.target_weights.append(tf.placeholder(tf.float32, shape=[batch_size,size],
                                                     name="weight{0}".format(i)))
 
         # Our targets are decoder inputs shifted by one.
@@ -278,11 +276,13 @@ class Seq2seqWrapper(Layer):
                    for i in xrange(len(self.decoder_inputs) - 1)]
         self.targets = targets  # DH add for debug
         # Training outputs and losses.
+        #print self.encoder_inputs
+        #print self.decoder_inputs
         if forward_only:
           self.outputs, self.losses = tf.contrib.legacy_seq2seq.model_with_buckets(
               self.encoder_inputs, self.decoder_inputs, targets,
               self.target_weights, buckets, lambda x, y: seq2seq_f(x, y, True),
-              softmax_loss_function=None)
+              softmax_loss_function=lambda x,y:tf.losses.mean_squared_error(x, y))
               #softmax_loss_function=softmax_loss_function)
           # If we use output projection, we need to project outputs for decoding.
           if output_projection is not None:
@@ -296,7 +296,7 @@ class Seq2seqWrapper(Layer):
               self.encoder_inputs, self.decoder_inputs, targets,
               self.target_weights, buckets,
               lambda x, y: seq2seq_f(x, y, False),
-              softmax_loss_function = None)
+              softmax_loss_function=lambda x,y:tf.losses.mean_squared_error(x, y))
               #softmax_loss_function=softmax_loss_function)
 
         # Gradients and SGD update operation for training the model.
