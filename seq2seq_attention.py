@@ -35,9 +35,13 @@ UNK_ID = 3
 _START_VOCAB = [_PAD, _GO, _EOS, _UNK]
 plot_data = True
 # Model
-buckets = [(2, 2), (2, 2), (2, 2), (4, 5)]
+buckets = [(2, 2), (4, 4), (10, 10), (15, 15)]
 num_layers = 3
-size = 1 #embedding vector size
+size = 2 #embedding vector size
+PAD_ID_embedding = size*[PAD_ID]
+GO_ID_embedding = size*[GO_ID]
+EOS_ID_embedding = size*[EOS_ID]
+UNK_ID_embedding = size*[UNK_ID]
 # Training
 learning_rate = 0.5
 learning_rate_decay_factor = 0.99
@@ -113,10 +117,10 @@ def main_train():
     ask_train_ids_path = train_path + (".ids%d.ask" % vocab_size)
     total_ids_path = train_path + (".ids%d.total" % vocab_size)
     tl.nlp.data_to_token_ids(train_path + ".ans", ans_train_ids_path, vocab_path,
-                                tokenizer=None, normalize_digits=normalize_digits,
+                                tokenizer=None, normalize_digits=normalize_digits,EOS_ID=EOS_ID,
                                 UNK_ID=UNK_ID, _DIGIT_RE=_DIGIT_RE)
     tl.nlp.data_to_token_ids(train_path + ".ask", ask_train_ids_path, vocab_path,
-                                tokenizer=None, normalize_digits=normalize_digits,
+                                tokenizer=None, normalize_digits=normalize_digits,GO_ID=GO_ID,
                                 UNK_ID=UNK_ID, _DIGIT_RE=_DIGIT_RE)
     # we should also create tokenized file for the development (testing) data.
     

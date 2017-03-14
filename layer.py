@@ -195,6 +195,7 @@ class Seq2seqWrapper(Layer):
     self.learning_rate_decay_op = self.learning_rate.assign(
         self.learning_rate * learning_rate_decay_factor)
     self.global_step = tf.Variable(0, trainable=False, name='global_step')
+    self.size = size
 
     # =========== Fake output Layer for compute cost ======
     # If we use sampled softmax, we need an output projection.
@@ -278,8 +279,6 @@ class Seq2seqWrapper(Layer):
                    for i in xrange(len(self.decoder_inputs) - 1)]
         self.targets = targets  # DH add for debug
         # Training outputs and losses.
-        #print self.encoder_inputs
-        #print self.decoder_inputs
         if forward_only:
           self.outputs, self.losses = tf.contrib.legacy_seq2seq.model_with_buckets(
               self.encoder_inputs, self.decoder_inputs, targets,
@@ -358,19 +357,15 @@ class Seq2seqWrapper(Layer):
     input_feed = {}
     for l in xrange(encoder_size):
         #[encoder_size*batch_size]
-      input_feed[self.encoder_inputs[l].name] = [encoder_inputs[l]]
+      input_feed[self.encoder_inputs[l].name] = encoder_inputs[l]
     for l in xrange(decoder_size):
-      input_feed[self.decoder_inputs[l].name] = [decoder_inputs[l]]
+      input_feed[self.decoder_inputs[l].name] = decoder_inputs[l]
       #[decoder_size*batch_size]
       input_feed[self.target_weights[l].name] = target_weights[l]
-    # print(self.encoder_inputs[l].name)
-    # print(self.decoder_inputs[l].name)
-    # print(self.target_weights[l].name)
 
     # Since our targets are decoder inputs shifted by one, we need one more.
     last_target = self.decoder_inputs[decoder_size].name
-    input_feed[last_target] = [np.zeros([self.batch_size], dtype=np.int32)]
-    # print('last_target', last_target)
+    input_feed[last_target] = decoder_inputs[decoder_size-1]#should be padding,and I hope it is
 
     # Output feed: depends on whether we do a backward step or not.
     if not forward_only:
@@ -388,32 +383,27 @@ class Seq2seqWrapper(Layer):
     else:
       return None, outputs[0], outputs[1:]  # No gradient norm, loss, outputs.
 
+  def id2vec(self,id):
+    '''should return the word embedding(shape:a list of length [size])
+    Parameters
+    ------------
+    id:the token id should be trans
+    dictionary:like a map 
+    '''
+    return [2.0]*self.size
   def get_batch(self, data, bucket_id, PAD_ID=0, GO_ID=1, EOS_ID=2, UNK_ID=3):
     """Get a random batch of data from the specified bucket, prepare for step.
-
-    To feed data in step(..) it must be a list of batch-major vectors, while
-    data here contains single length-major cases. So the main logic of this
-    function is to re-index data cases to be in the proper format for feeding.
-
     Parameters
     ----------
     data : a tuple of size len(self.buckets) in which each element contains
         lists of pairs of input and output data that we use to create a batch.
     bucket_id : integer, which bucket to get the batch for.
-    PAD_ID : int
-        Index of Padding in vocabulary
-    GO_ID : int
-        Index of GO in vocabulary
-    EOS_ID : int
-        Index of End of sentence in vocabulary
-    UNK_ID : int
-        Index of Unknown word in vocabulary
-
     Returns
     -------
     The triple (encoder_inputs, decoder_inputs, target_weights) for
     the constructed batch that has the proper format to call step(...) later.
     """
+    print ("get batch")
     encoder_size, decoder_size = self.buckets[bucket_id]
     encoder_inputs, decoder_inputs = [], []
 
@@ -422,40 +412,32 @@ class Seq2seqWrapper(Layer):
     for _ in xrange(self.batch_size):
         #encoder_input and decoder_input is a single sentence
       encoder_input, decoder_input = random.choice(data[bucket_id])
-
-      # Encoder inputs are padded and then reversed.
       encoder_pad = [PAD_ID] * (encoder_size - len(encoder_input))
       #encoder_inputs is a list(batch_size elements) of ask sentence(which is list)
       #reversed the order of input
       encoder_inputs.append(list(reversed(encoder_input + encoder_pad)))
 
-      # Decoder inputs get an extra "GO" symbol, and are padded then.
       decoder_pad_size = decoder_size - len(decoder_input) - 1
       decoder_inputs.append([GO_ID] + decoder_input +
                             [PAD_ID] * decoder_pad_size)
-    # Now we create batch-major vectors from the data selected above.
+
     batch_encoder_inputs, batch_decoder_inputs, batch_weights = [], [], []
-    # Batch encoder inputs are just re-indexed encoder_inputs.
     #batch_encoder_inputs:shape[encoder_size*batch_size],each element is a size
     for length_idx in xrange(encoder_size):
       batch_encoder_inputs.append(
-          #np.array([encoder_inputs[batch_idx][length_idx]
-          list([encoder_inputs[batch_idx][length_idx]
+          list(#[encoder_inputs[batch_idx][length_idx]
+                [ self.id2vec(decoder_inputs[batch_idx][length_idx])
                     for batch_idx in xrange(self.batch_size)]))
     # Batch decoder inputs are re-indexed decoder_inputs, we create weights.
+    print ("finish encoder")
     for length_idx in xrange(decoder_size):
       batch_decoder_inputs.append(
-          #np.array([decoder_inputs[batch_idx][length_idx]
-          list([decoder_inputs[batch_idx][length_idx]
+          list(#[decoder_inputs[batch_idx][length_idx]
+                            [ self.id2vec(decoder_inputs[batch_idx][length_idx]) #[2.0]*self.size stand for word_vec of word decoder_inputs[batch_idx][length_idx]
                     for batch_idx in xrange(self.batch_size)]))
-      #print "list size:"
-      #print decoder_inputs[0][length_idx]
-      #print len(decoder_inputs[0][length_idx])
-      # Create target_weights to be 0 for targets that are padding.
-      batch_weight = np.ones(self.batch_size, dtype=np.float32)
+      print ("finish decoder")
+      batch_weight = self.batch_size*[1.0]
       for batch_idx in xrange(self.batch_size):
-        # We set weight to 0 if the corresponding target is a PAD symbol.
-        # The corresponding target is decoder_input shifted by 1 forward.
         if length_idx < decoder_size - 1:
           target = decoder_inputs[batch_idx][length_idx + 1]
         if length_idx == decoder_size - 1 or target == PAD_ID:
