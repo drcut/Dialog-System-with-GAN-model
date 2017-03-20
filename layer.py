@@ -182,10 +182,10 @@ class Seq2seqWrapper(Layer):
                batch_size,
                learning_rate,
                learning_rate_decay_factor,
+               vec_file,
                use_lstm=False,
                num_samples=512,
                forward_only=False,
-               vec_file,
                name='wrapper'):
     Layer.__init__(self)#, name=name)
 
