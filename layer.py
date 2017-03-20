@@ -6,6 +6,7 @@ import numpy as np
 from six.moves import xrange
 import random
 import warnings
+from gensim.models import KeyedVectors
 set_keep = globals()
 set_keep['_layers_name_list'] =[]
 set_keep['name_reuse'] = False
@@ -184,6 +185,7 @@ class Seq2seqWrapper(Layer):
                use_lstm=False,
                num_samples=512,
                forward_only=False,
+               vec_file,
                name='wrapper'):
     Layer.__init__(self)#, name=name)
 
@@ -196,6 +198,8 @@ class Seq2seqWrapper(Layer):
         self.learning_rate * learning_rate_decay_factor)
     self.global_step = tf.Variable(0, trainable=False, name='global_step')
     self.size = size
+    # =========== Load Vector File ======
+    self.vec_model = KeyedVectors.load_word2vec_format(vec_file, binary=True)
 
     # =========== Fake output Layer for compute cost ======
     # If we use sampled softmax, we need an output projection.
@@ -238,8 +242,8 @@ class Seq2seqWrapper(Layer):
             cell = tf.nn.rnn_cell.MultiRNNCell([single_cell] * num_layers)
 
         def seq2seq_f(encoder_inputs, decoder_inputs, do_decode):
-          #loop_function: 
-          #If not None, this function will be applied to i-th output in order to generate i+1-th input, 
+          #loop_function:
+          #If not None, this function will be applied to i-th output in order to generate i+1-th input,
           #and decoder_inputs will be ignored
           if(do_decode==True):
             #loop_function = lambda prev,i: prev
@@ -247,8 +251,8 @@ class Seq2seqWrapper(Layer):
           else:
             loop_function = None
           return tf.contrib.legacy_seq2seq.tied_rnn_seq2seq(
-            encoder_inputs, decoder_inputs, cell, 
-            loop_function=loop_function, dtype=tf.float32, scope=None) 
+            encoder_inputs, decoder_inputs, cell,
+            loop_function=loop_function, dtype=tf.float32, scope=None)
           '''
           return tf.contrib.legacy_seq2seq.embedding_attention_seq2seq(
               encoder_inputs, decoder_inputs, cell,
@@ -388,9 +392,14 @@ class Seq2seqWrapper(Layer):
     Parameters
     ------------
     id:the token id should be trans
-    dictionary:like a map 
+    dictionary:like a map
     '''
-    return [2.0]*self.size
+    try:
+        ret_vec = self.vec_model[str(id)]
+    except KeyError:
+        ret_vec = None  # Later, this should be substituted as vec_model['3'], i.e. UNK_ID
+    return ret_vec
+
   def get_batch(self, data, bucket_id, PAD_ID=0, GO_ID=1, EOS_ID=2, UNK_ID=3):
     """Get a random batch of data from the specified bucket, prepare for step.
     Parameters
