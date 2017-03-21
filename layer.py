@@ -404,14 +404,16 @@ class Seq2seqWrapper(Layer):
     #print(ret_vec)
     return ret_vec
 
+
   def vec2id(self, vec):
-    """Return the id whose vector is nearest to the given id."""
+    """Return the id whose vector is nearest to the given vec."""
     #print("vec2id")
     #print(vec[0])
     nearest_vecs = self.vec_model.most_similar(positive=[vec[0]], topn=1)  # A list of tuples, which have the format of (id, similarity)
     #print("nearest")
     #print(int(nearest_vecs[0][0]))
     return int(nearest_vecs[0][0])
+
 
 
   def get_batch(self, data, bucket_id, PAD_ID=0, GO_ID=1, EOS_ID=2, UNK_ID=3):
