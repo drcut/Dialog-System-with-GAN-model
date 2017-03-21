@@ -321,6 +321,8 @@ def main_decode():
       # If there is an EOS symbol in outputs, cut them at that point.
       if EOS_ID in outputs:
         outputs = outputs[:outputs.index(EOS_ID)]
+      #print("outputs")
+      #print(outputs)
       # Print out French sentence corresponding to outputs.
       print(" ".join([tf.compat.as_str(rev_vocab[output]) for output in outputs]))
       print("> ", end="")
