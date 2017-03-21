@@ -15,9 +15,10 @@ from six.moves import xrange
 import layer
 
 # Data directory and vocabularies size
-data_dir = "/home/robin/new_lab/data"                # Data directory
-train_dir = "/home/robin/new_lab/data/train"               # Model directory save_dir
-vocab_size = 50000           #vocabulary size
+data_dir = "/media/robin/sorry/new_lab/data"                # Data directory
+train_dir = data_dir+"/train"               # Model directory save_dir
+vocab_size = 5           #vocabulary size
+vec_file ="/media/robin/sorry/new_lab/vec_001.bin"
 # Create vocabulary file (if it does not exist yet) from data file.
 #_WORD_SPLIT = re.compile(b"([.,!?\"':;)(]，．、：；（） ！)") # regular expression for word spliting. in basic_tokenizer.
 _WORD_SPLIT=re.compile(b"([.,!?\"':;)(])")
@@ -35,9 +36,9 @@ UNK_ID = 3
 _START_VOCAB = [_PAD, _GO, _EOS, _UNK]
 plot_data = True
 # Model
-buckets = [(2, 2), (4, 4), (10, 10), (15, 15)]
+buckets = [(5, 5), (10, 10), (20, 20), (40, 40)]
 num_layers = 3
-size = 2 #embedding vector size
+size = 100 #embedding vector size
 PAD_ID_embedding = size*[PAD_ID]
 GO_ID_embedding = size*[GO_ID]
 EOS_ID_embedding = size*[EOS_ID]
@@ -46,7 +47,7 @@ UNK_ID_embedding = size*[UNK_ID]
 learning_rate = 0.5
 learning_rate_decay_factor = 0.99
 max_gradient_norm = 5.0             # Truncated backpropagation
-batch_size = 1
+batch_size = 64
 num_samples = 512                   # Sampled softmax
 max_train_data_size = None             # Limit on the size of training data (0: no limit). DH: for fast testing, set a value
 steps_per_checkpoint = 10           # Print, save frequence
@@ -94,9 +95,9 @@ def read_data(source_path, target_path, buckets, EOS_ID, max_size=None):
 def main_train():
 
     print("Prepare the raw data")
-    train_path = "/home/robin/new_lab/data/train/train1"
-    dev_path = "/home/robin/new_lab/data/test/test1"
-    path="/home/robin/new_lab/data/"
+    train_path = data_dir+"/train/train1"
+    dev_path = data_dir+"/test/test1"
+    path=data_dir
     print("Training data : %s" % train_path)   # wmt/giga-fren.release2
     print("Testing data : %s" % dev_path)     # wmt/newstest2013
 
@@ -104,36 +105,41 @@ def main_train():
     print()
     print("Create vocabularies")
     vocab_path = os.path.join(data_dir, "vocab%d.list" % vocab_size)
+    '''
+    vocab_path = os.path.join(data_dir, "vocab%d.list" % vocab_size)
     print("Vocabulary list: %s" % vocab_path)    # wmt/vocab40000.fr
-    tl.nlp.create_vocabulary(vocab_path, "/home/robin/new_lab/data/len15_blank.txt",
+    tl.nlp.create_vocabulary(vocab_path, data_dir+"/len15_blank.txt",
                 vocab_size, tokenizer=None, normalize_digits=normalize_digits,
                 _DIGIT_RE=_DIGIT_RE, _START_VOCAB=_START_VOCAB)
-
+'''
     #Tokenize Training and Testing data.
     print()
     print("Tokenize data")
+    
     # normalize_digits=True means set all digits to zero, so as to reduce vocabulary size.
     ans_train_ids_path = train_path + (".ids%d.ans" % vocab_size)
     ask_train_ids_path = train_path + (".ids%d.ask" % vocab_size)
     total_ids_path = train_path + (".ids%d.total" % vocab_size)
+    '''
     tl.nlp.data_to_token_ids(train_path + ".ans", ans_train_ids_path, vocab_path,
                                 tokenizer=None, normalize_digits=normalize_digits,EOS_ID=EOS_ID,
                                 UNK_ID=UNK_ID, _DIGIT_RE=_DIGIT_RE)
     tl.nlp.data_to_token_ids(train_path + ".ask", ask_train_ids_path, vocab_path,
                                 tokenizer=None, normalize_digits=normalize_digits,GO_ID=GO_ID,
                                 UNK_ID=UNK_ID, _DIGIT_RE=_DIGIT_RE)
+              '''                  
     # we should also create tokenized file for the development (testing) data.
     
     ans_dev_ids_path = dev_path + (".ids%d.ans" % vocab_size)
     ask_dev_ids_path = dev_path + (".ids%d.ask" % vocab_size)
-
+    '''
     tl.nlp.data_to_token_ids(dev_path + ".ans", ans_dev_ids_path, vocab_path,
                                 tokenizer=None, normalize_digits=normalize_digits,
                                 UNK_ID=UNK_ID, _DIGIT_RE=_DIGIT_RE)
     tl.nlp.data_to_token_ids(dev_path + ".ask", ask_dev_ids_path, vocab_path,
                                 tokenizer=None, normalize_digits=normalize_digits,
                                 UNK_ID=UNK_ID, _DIGIT_RE=_DIGIT_RE)
-                                
+    '''            
     ask_train = ask_train_ids_path
     ans_train = ans_train_ids_path
     ask_dev = ask_dev_ids_path
@@ -179,6 +185,7 @@ def main_train():
                           batch_size,
                           learning_rate,
                           learning_rate_decay_factor,
+                          vec_file,
                           use_lstm = True,
                           forward_only=False)    # is_train = True
     # sess.run(tf.initialize_all_variables())
@@ -250,18 +257,19 @@ def main_decode():
     # Create model and load parameters.
     with tf.variable_scope("model", reuse=None):
     #with tf.variable_scope("model", reuse=True):
-        model_eval = layer.EmbeddingAttentionSeq2seqWrapper(
-                      vocab_size,
-                      vocab_size,
-                      buckets,
-                      size,
-                      num_layers,
-                      max_gradient_norm,
-                      batch_size = 1,  # We decode one sentence at a time.
-                      learning_rate = learning_rate,
-                      learning_rate_decay_factor = learning_rate_decay_factor,
-                      use_lstm = True,
-                      forward_only = True) # is_train = False
+        model_eval = layer.Seq2seqWrapper(
+                          vocab_size,
+                          vocab_size,
+                          buckets,
+                          size,
+                          num_layers,
+                          max_gradient_norm,
+                          1,
+                          learning_rate,
+                          learning_rate_decay_factor,
+                          vec_file,
+                          use_lstm = True,
+                          forward_only=True) 
 
     #sess.run(tf.initialize_all_variables())
     sess.run(tf.global_variables_initializer())
@@ -275,20 +283,33 @@ def main_decode():
     # Load vocabularies.
     vocab_path = os.path.join(data_dir, "vocab%d.list" % vocab_size)
     vocab, rev_vocab = tl.nlp.initialize_vocabulary(vocab_path)
-
+    #print("vocab_path")
+    #print(vocab_path)
     # Decode from standard input.
     sys.stdout.write("> ")
     sys.stdout.flush()
     sentence = sys.stdin.readline()
     while sentence:
       # Get token-ids for the input sentence.
-      token_ids = tl.nlp.sentence_to_token_ids(tf.compat.as_bytes(sentence), vocab)
+      def my_tokenizer(sentence, _WORD_SPLIT=re.compile(b"　([.,!?\"':;)(])")):
+        words = []
+        sentence = tf.compat.as_bytes(sentence)
+        for space_separated_fragment in sentence.strip().split():
+            words.extend(re.split(_WORD_SPLIT, space_separated_fragment))
+        return [w for w in words if w]
+
+      token_ids = tl.nlp.sentence_to_token_ids(tf.compat.as_bytes(sentence), vocab,tokenizer=my_tokenizer)
+      print("token ids")
+      print (token_ids)
       # Which bucket does it belong to?
       bucket_id = min([b for b in xrange(len(buckets))
                        if buckets[b][0] > len(token_ids)])
       # Get a 1-element batch to feed the sentence to the model.
       encoder_inputs, decoder_inputs, target_weights = model_eval.get_batch(
           {bucket_id: [(token_ids, [])]}, bucket_id, PAD_ID, GO_ID, EOS_ID, UNK_ID)
+      #print ("get batch result")
+      #print (encoder_inputs)
+      #print(decoder_inputs)
       # Get output logits for the sentence.
       _, _, output_logits = model_eval.step(sess, encoder_inputs, decoder_inputs,
                                        target_weights, bucket_id, True)
@@ -307,7 +328,7 @@ if __name__ == '__main__':
     sess = tf.InteractiveSession()
     try:
         """ Train model """
-        main_train()
+        #main_train()
         """ Play with model """
         main_decode()
     except KeyboardInterrupt:

@@ -394,10 +394,15 @@ class Seq2seqWrapper(Layer):
     id:the token id should be trans
     dictionary:like a map
     '''
+    #print("id2vec")
+    #print("id=")
+    #print(id)
     try:
         ret_vec = self.vec_model[str(id)]
     except KeyError:
-        ret_vec = None  # Later, this should be substituted as vec_model['3'], i.e. UNK_ID
+        ret_vec = [0.0]*self.size  # Later, this should be substituted as vec_model['3'], i.e. UNK_ID
+    #print("res=")
+    #print(ret_vec)
     return ret_vec
 
   def get_batch(self, data, bucket_id, PAD_ID=0, GO_ID=1, EOS_ID=2, UNK_ID=3):
@@ -412,7 +417,7 @@ class Seq2seqWrapper(Layer):
     The triple (encoder_inputs, decoder_inputs, target_weights) for
     the constructed batch that has the proper format to call step(...) later.
     """
-    print ("get batch")
+    #print ("get batch")
     encoder_size, decoder_size = self.buckets[bucket_id]
     encoder_inputs, decoder_inputs = [], []
 
@@ -421,6 +426,8 @@ class Seq2seqWrapper(Layer):
     for _ in xrange(self.batch_size):
         #encoder_input and decoder_input is a single sentence
       encoder_input, decoder_input = random.choice(data[bucket_id])
+      #print ("encoder input")
+      #print(encoder_input)
       encoder_pad = [PAD_ID] * (encoder_size - len(encoder_input))
       #encoder_inputs is a list(batch_size elements) of ask sentence(which is list)
       #reversed the order of input
@@ -435,16 +442,16 @@ class Seq2seqWrapper(Layer):
     for length_idx in xrange(encoder_size):
       batch_encoder_inputs.append(
           list(#[encoder_inputs[batch_idx][length_idx]
-                [ self.id2vec(decoder_inputs[batch_idx][length_idx])
+                [ self.id2vec(encoder_inputs[batch_idx][length_idx])
                     for batch_idx in xrange(self.batch_size)]))
     # Batch decoder inputs are re-indexed decoder_inputs, we create weights.
-    print ("finish encoder")
+    #print ("finish encoder")
     for length_idx in xrange(decoder_size):
       batch_decoder_inputs.append(
           list(#[decoder_inputs[batch_idx][length_idx]
                             [ self.id2vec(decoder_inputs[batch_idx][length_idx]) #[2.0]*self.size stand for word_vec of word decoder_inputs[batch_idx][length_idx]
                     for batch_idx in xrange(self.batch_size)]))
-      print ("finish decoder")
+      #print ("finish decoder")
       batch_weight = self.batch_size*[1.0]
       for batch_idx in xrange(self.batch_size):
         if length_idx < decoder_size - 1:
