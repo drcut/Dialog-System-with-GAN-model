@@ -299,22 +299,25 @@ def main_decode():
         return [w for w in words if w]
 
       token_ids = tl.nlp.sentence_to_token_ids(tf.compat.as_bytes(sentence), vocab,tokenizer=my_tokenizer)
-      print("token ids")
-      print (token_ids)
+      #print("token ids")
+      #print (token_ids)
       # Which bucket does it belong to?
       bucket_id = min([b for b in xrange(len(buckets))
                        if buckets[b][0] > len(token_ids)])
       # Get a 1-element batch to feed the sentence to the model.
       encoder_inputs, decoder_inputs, target_weights = model_eval.get_batch(
-          {bucket_id: [(token_ids, [])]}, bucket_id, PAD_ID, GO_ID, EOS_ID, UNK_ID)
+          {bucket_id: [[token_ids, []]]}, bucket_id, PAD_ID, GO_ID, EOS_ID, UNK_ID)
       #print ("get batch result")
       #print (encoder_inputs)
       #print(decoder_inputs)
       # Get output logits for the sentence.
       _, _, output_logits = model_eval.step(sess, encoder_inputs, decoder_inputs,
                                        target_weights, bucket_id, True)
+      #print ("output_logits")
+      #print(output_logits)
       # This is a greedy decoder - outputs are just argmaxes of output_logits.
-      outputs = [int(np.argmax(logit, axis=1)) for logit in output_logits]
+      #outputs = [int(np.argmax(logit, axis=1)) for logit in output_logits]
+      outputs = [model_eval.vec2id(logit) for logit in output_logits]
       # If there is an EOS symbol in outputs, cut them at that point.
       if EOS_ID in outputs:
         outputs = outputs[:outputs.index(EOS_ID)]
