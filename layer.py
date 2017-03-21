@@ -392,7 +392,6 @@ class Seq2seqWrapper(Layer):
     Parameters
     ------------
     id:the token id should be trans
-    dictionary:like a map
     '''
     #print("id2vec")
     #print("id=")
@@ -400,10 +399,16 @@ class Seq2seqWrapper(Layer):
     try:
         ret_vec = self.vec_model[str(id)]
     except KeyError:
-        ret_vec = [0.0]*self.size  # Later, this should be substituted as vec_model['3'], i.e. UNK_ID
+        ret_vec = [0.0] * self.size
     #print("res=")
     #print(ret_vec)
     return ret_vec
+
+    def vec2id(self, vec):
+        """Return the id whose vector is nearest to the given id."""
+        nearest_vecs = self.vec_model.most_similar(positive=[vec], topn=1)  # A list of tuples, which have the format of (id, similarity)
+        return nearest_vecs[0][0]
+
 
   def get_batch(self, data, bucket_id, PAD_ID=0, GO_ID=1, EOS_ID=2, UNK_ID=3):
     """Get a random batch of data from the specified bucket, prepare for step.
