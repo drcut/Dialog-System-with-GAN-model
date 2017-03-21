@@ -405,7 +405,7 @@ class Seq2seqWrapper(Layer):
     return ret_vec
 
     def vec2id(self, vec):
-        """Return the id whose vector is nearest to the given id."""
+        """Return the id whose vector is nearest to the given vec."""
         nearest_vecs = self.vec_model.most_similar(positive=[vec], topn=1)  # A list of tuples, which have the format of (id, similarity)
         return nearest_vecs[0][0]
 
