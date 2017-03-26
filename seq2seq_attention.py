@@ -15,10 +15,10 @@ from six.moves import xrange
 import layer
 
 # Data directory and vocabularies size
-data_dir = "/media/robin/sorry/new_lab/data"                # Data directory
-train_dir = data_dir+"/train"               # Model directory save_dir
-vocab_size = 5           #vocabulary size
-vec_file ="/media/robin/sorry/new_lab/vec_001.bin"
+data_dir = r"./data"                # Data directory
+train_dir = os.path.join(data_dir, "/train")              # Model directory save_dir
+vocab_size = 50000          #vocabulary size
+vec_file = os.path.join(data_dir, 'vec_001.bin')
 # Create vocabulary file (if it does not exist yet) from data file.
 #_WORD_SPLIT = re.compile(b"([.,!?\"':;)(]，．、：；（） ！)") # regular expression for word spliting. in basic_tokenizer.
 _WORD_SPLIT=re.compile(b"([.,!?\"':;)(])")
@@ -115,7 +115,7 @@ def main_train():
     #Tokenize Training and Testing data.
     print()
     print("Tokenize data")
-    
+
     # normalize_digits=True means set all digits to zero, so as to reduce vocabulary size.
     ans_train_ids_path = train_path + (".ids%d.ans" % vocab_size)
     ask_train_ids_path = train_path + (".ids%d.ask" % vocab_size)
@@ -127,9 +127,9 @@ def main_train():
     tl.nlp.data_to_token_ids(train_path + ".ask", ask_train_ids_path, vocab_path,
                                 tokenizer=None, normalize_digits=normalize_digits,GO_ID=GO_ID,
                                 UNK_ID=UNK_ID, _DIGIT_RE=_DIGIT_RE)
-              '''                  
+              '''
     # we should also create tokenized file for the development (testing) data.
-    
+
     ans_dev_ids_path = dev_path + (".ids%d.ans" % vocab_size)
     ask_dev_ids_path = dev_path + (".ids%d.ask" % vocab_size)
     '''
@@ -139,7 +139,7 @@ def main_train():
     tl.nlp.data_to_token_ids(dev_path + ".ask", ask_dev_ids_path, vocab_path,
                                 tokenizer=None, normalize_digits=normalize_digits,
                                 UNK_ID=UNK_ID, _DIGIT_RE=_DIGIT_RE)
-    '''            
+    '''
     ask_train = ask_train_ids_path
     ans_train = ans_train_ids_path
     ask_dev = ask_dev_ids_path
@@ -223,7 +223,7 @@ def main_train():
         current_step += 1
 
         # Once in a while, we save checkpoint, print statistics, and run evals.
-        
+
         if current_step % steps_per_checkpoint == 0:
             # Print statistics for the previous epoch.
             perplexity = math.exp(loss) if loss < 300 else float('inf')
@@ -238,7 +238,7 @@ def main_train():
             # Save model
             tl.files.save_npz(model.all_params, name=model_file_name+'.npz')
             #model.print_params()
-            
+
             step_time, loss = 0.0, 0.0
             # Run evals on development set and print their perplexity.
             for bucket_id in xrange(len(buckets)):
@@ -252,7 +252,7 @@ def main_train():
                 eval_ppx = math.exp(eval_loss) if eval_loss < 300 else float('inf')
                 print("  eval: bucket %d perplexity %.2f" % (bucket_id, eval_ppx))
             sys.stdout.flush()
-    
+
 def main_decode():
     # Create model and load parameters.
     with tf.variable_scope("model", reuse=None):
@@ -269,7 +269,7 @@ def main_decode():
                           learning_rate_decay_factor,
                           vec_file,
                           use_lstm = True,
-                          forward_only=True) 
+                          forward_only=True)
 
     #sess.run(tf.initialize_all_variables())
     sess.run(tf.global_variables_initializer())
@@ -333,9 +333,9 @@ if __name__ == '__main__':
     sess = tf.InteractiveSession()
     try:
         """ Train model """
-        #main_train()
+        main_train()
         """ Play with model """
-        main_decode()
+        #main_decode()
     except KeyboardInterrupt:
         print('\nKeyboardInterrupt')
         tl.ops.exit_tf(sess)
