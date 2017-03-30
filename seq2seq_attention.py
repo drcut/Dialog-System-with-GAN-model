@@ -104,7 +104,7 @@ def main_train():
     #Create Vocabularies for both Training and Testing data.
     print()
     print("Create vocabularies")
-    vocab_path = os.path.join(data_dir, "vocab%d.list" % vocab_size)
+    vocab_path = os.path.join(data_dir, "vocab.list")
     '''
     vocab_path = os.path.join(data_dir, "vocab%d.list" % vocab_size)
     print("Vocabulary list: %s" % vocab_path)    # wmt/vocab40000.fr
@@ -176,8 +176,6 @@ def main_train():
     print("Create Seq2seq Model")
     with tf.variable_scope("model", reuse=None):
         model = layer.Seq2seqWrapper(
-                          vocab_size,
-                          vocab_size,
                           buckets,
                           size,
                           num_layers,
@@ -258,8 +256,6 @@ def main_decode():
     with tf.variable_scope("model", reuse=None):
     #with tf.variable_scope("model", reuse=True):
         model_eval = layer.Seq2seqWrapper(
-                          vocab_size,
-                          vocab_size,
                           buckets,
                           size,
                           num_layers,
@@ -281,7 +277,7 @@ def main_decode():
     #model_eval.print_params()
 
     # Load vocabularies.
-    vocab_path = os.path.join(data_dir, "vocab%d.list" % vocab_size)
+    vocab_path = os.path.join(data_dir, "vocab.list")
     vocab, rev_vocab = tl.nlp.initialize_vocabulary(vocab_path)
     #print("vocab_path")
     #print(vocab_path)
@@ -299,17 +295,12 @@ def main_decode():
         return [w for w in words if w]
 
       token_ids = tl.nlp.sentence_to_token_ids(tf.compat.as_bytes(sentence), vocab,tokenizer=my_tokenizer)
-      #print("token ids")
-      #print (token_ids)
       # Which bucket does it belong to?
       bucket_id = min([b for b in xrange(len(buckets))
                        if buckets[b][0] > len(token_ids)])
       # Get a 1-element batch to feed the sentence to the model.
       encoder_inputs, decoder_inputs, target_weights = model_eval.get_batch(
           {bucket_id: [[token_ids, []]]}, bucket_id, PAD_ID, GO_ID, EOS_ID, UNK_ID)
-      #print ("get batch result")
-      #print (encoder_inputs)
-      #print(decoder_inputs)
       # Get output logits for the sentence.
       _, _, output_logits = model_eval.step(sess, encoder_inputs, decoder_inputs,
                                        target_weights, bucket_id, True)
@@ -333,9 +324,9 @@ if __name__ == '__main__':
     sess = tf.InteractiveSession()
     try:
         """ Train model """
-        main_train()
+        #main_train()
         """ Play with model """
-        #main_decode()
+        main_decode()
     except KeyboardInterrupt:
         print('\nKeyboardInterrupt')
         tl.ops.exit_tf(sess)

@@ -173,8 +173,6 @@ class Seq2seqWrapper(Layer):
         An optional name to attach to this layer.
   """
   def __init__(self,
-               source_vocab_size,
-               target_vocab_size,
                buckets,
                size,
                num_layers,
@@ -189,8 +187,6 @@ class Seq2seqWrapper(Layer):
                name='wrapper'):
     Layer.__init__(self)#, name=name)
 
-    self.source_vocab_size = source_vocab_size
-    self.target_vocab_size = target_vocab_size
     self.buckets = buckets
     self.batch_size = batch_size
     self.learning_rate = tf.Variable(float(learning_rate), trainable=False, name='learning_rate')
@@ -205,6 +201,7 @@ class Seq2seqWrapper(Layer):
     # If we use sampled softmax, we need an output projection.
     with tf.variable_scope(name) as vs:
         output_projection = None
+        '''
         softmax_loss_function = None
         # Sampled softmax only makes sense if we sample less than vocabulary size.
         if num_samples > 0 and num_samples < self.target_vocab_size:
@@ -220,6 +217,7 @@ class Seq2seqWrapper(Layer):
             #return tf.nn.sampled_softmax_loss(w_t, b, labels, num_samples,
               #      self.target_vocab_size)
           softmax_loss_function = sampled_loss
+          '''
 
         # ============ Seq Encode Layer =============
         # Create the internal multi-layer cell for our RNN.
@@ -242,26 +240,28 @@ class Seq2seqWrapper(Layer):
             cell = tf.nn.rnn_cell.MultiRNNCell([single_cell] * num_layers)
 
         def seq2seq_f(encoder_inputs, decoder_inputs, do_decode):
+          print ("run my seq2seq")
           #loop_function:
           #If not None, this function will be applied to i-th output in order to generate i+1-th input,
           #and decoder_inputs will be ignored
           if(do_decode==True):
-            #loop_function = lambda prev,i: prev
-            loop_function=None
+            '''
+            def my_loop(prev, i):
+              print ("in my loop")
+              print (prev)
+              print (i)
+              return prev
+              '''
+
+            loop_function = lambda prev,i: prev
+            #loop_function = my_loop
+            #loop_function=None
           else:
             loop_function = None
           return tf.contrib.legacy_seq2seq.tied_rnn_seq2seq(
             encoder_inputs, decoder_inputs, cell,
             loop_function=loop_function, dtype=tf.float32, scope=None)
-          '''
-          return tf.contrib.legacy_seq2seq.embedding_attention_seq2seq(
-              encoder_inputs, decoder_inputs, cell,
-              num_encoder_symbols=source_vocab_size,
-              num_decoder_symbols=target_vocab_size,
-              embedding_size=size,
-              output_projection=output_projection,
-              feed_previous=do_decode)
-        '''
+
         #=============================================================
         # Feeds for inputs.
         self.encoder_inputs = []
@@ -289,13 +289,7 @@ class Seq2seqWrapper(Layer):
               self.target_weights, buckets, lambda x, y: seq2seq_f(x, y, True),
               softmax_loss_function=lambda x,y:tf.losses.mean_squared_error(x, y))
               #softmax_loss_function=softmax_loss_function)
-          # If we use output projection, we need to project outputs for decoding.
-          if output_projection is not None:
-            for b in xrange(len(buckets)):
-              self.outputs[b] = [
-                  tf.matmul(output, output_projection[0]) + output_projection[1]
-                  for output in self.outputs[b]
-              ]
+
         else:
           self.outputs, self.losses = tf.contrib.legacy_seq2seq.model_with_buckets(
               self.encoder_inputs, self.decoder_inputs, targets,
@@ -380,7 +374,7 @@ class Seq2seqWrapper(Layer):
       output_feed = [self.losses[bucket_id]]  # Loss for this batch.
       for l in xrange(decoder_size):  # Output logits.
         output_feed.append(self.outputs[bucket_id][l])
-
+    print("runing")
     outputs = session.run(output_feed, input_feed)
     if not forward_only:
       return outputs[1], outputs[2], None  # Gradient norm, loss, no outputs.
@@ -394,14 +388,10 @@ class Seq2seqWrapper(Layer):
     id:the token id should be trans
     '''
     #print("id2vec")
-    #print("id=")
-    #print(id)
     try:
         ret_vec = self.vec_model[str(id)]
     except KeyError:
-        ret_vec = [0.0] * self.size
-    #print("res=")
-    #print(ret_vec)
+        ret_vec = np.asarray([0.0] * self.size)
     return ret_vec
 
 
@@ -447,22 +437,29 @@ class Seq2seqWrapper(Layer):
       decoder_pad_size = decoder_size - len(decoder_input) - 1
       decoder_inputs.append([GO_ID] + decoder_input +
                             [PAD_ID] * decoder_pad_size)
-
+      '''
+    print("encoder_inputs")
+    print (encoder_inputs)
+    print("decoder_inputs")
+    print (decoder_inputs)
+    '''
     batch_encoder_inputs, batch_decoder_inputs, batch_weights = [], [], []
     #batch_encoder_inputs:shape[encoder_size*batch_size],each element is a size
     for length_idx in xrange(encoder_size):
       batch_encoder_inputs.append(
-          list(#[encoder_inputs[batch_idx][length_idx]
+          #[encoder_inputs[batch_idx][length_idx]
                 [ self.id2vec(encoder_inputs[batch_idx][length_idx])
-                    for batch_idx in xrange(self.batch_size)]))
+                    for batch_idx in xrange(self.batch_size)])
     # Batch decoder inputs are re-indexed decoder_inputs, we create weights.
-    #print ("finish encoder")
+    '''
+    print ("finish encoder")
+    print (batch_encoder_inputs)
+    '''
     for length_idx in xrange(decoder_size):
       batch_decoder_inputs.append(
-          list(#[decoder_inputs[batch_idx][length_idx]
+          #[decoder_inputs[batch_idx][length_idx]
                             [ self.id2vec(decoder_inputs[batch_idx][length_idx]) #[2.0]*self.size stand for word_vec of word decoder_inputs[batch_idx][length_idx]
-                    for batch_idx in xrange(self.batch_size)]))
-      #print ("finish decoder")
+                    for batch_idx in xrange(self.batch_size)])
       batch_weight = self.batch_size*[1.0]
       for batch_idx in xrange(self.batch_size):
         if length_idx < decoder_size - 1:
@@ -471,4 +468,8 @@ class Seq2seqWrapper(Layer):
           batch_weight[batch_idx] = 0.0
       batch_weights.append(batch_weight)
       #batch_weight:[decoder_size*batch_size]
+      '''
+    print ("finish decoder")
+    print (batch_decoder_inputs)
+    '''
     return batch_encoder_inputs, batch_decoder_inputs, batch_weights
