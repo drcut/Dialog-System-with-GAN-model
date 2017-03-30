@@ -324,9 +324,9 @@ if __name__ == '__main__':
     sess = tf.InteractiveSession()
     try:
         """ Train model """
-        #main_train()
+        main_train()
         """ Play with model """
-        main_decode()
+        #main_decode()
     except KeyboardInterrupt:
         print('\nKeyboardInterrupt')
         tl.ops.exit_tf(sess)

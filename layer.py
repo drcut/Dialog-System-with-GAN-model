@@ -240,22 +240,13 @@ class Seq2seqWrapper(Layer):
             cell = tf.nn.rnn_cell.MultiRNNCell([single_cell] * num_layers)
 
         def seq2seq_f(encoder_inputs, decoder_inputs, do_decode):
-          print ("run my seq2seq")
+
           #loop_function:
           #If not None, this function will be applied to i-th output in order to generate i+1-th input,
           #and decoder_inputs will be ignored
           if(do_decode==True):
-            '''
-            def my_loop(prev, i):
-              print ("in my loop")
-              print (prev)
-              print (i)
-              return prev
-              '''
 
             loop_function = lambda prev,i: prev
-            #loop_function = my_loop
-            #loop_function=None
           else:
             loop_function = None
           return tf.contrib.legacy_seq2seq.tied_rnn_seq2seq(
@@ -374,7 +365,7 @@ class Seq2seqWrapper(Layer):
       output_feed = [self.losses[bucket_id]]  # Loss for this batch.
       for l in xrange(decoder_size):  # Output logits.
         output_feed.append(self.outputs[bucket_id][l])
-    print("runing")
+    #print("runing")
     outputs = session.run(output_feed, input_feed)
     if not forward_only:
       return outputs[1], outputs[2], None  # Gradient norm, loss, no outputs.
@@ -451,10 +442,10 @@ class Seq2seqWrapper(Layer):
                 [ self.id2vec(encoder_inputs[batch_idx][length_idx])
                     for batch_idx in xrange(self.batch_size)])
     # Batch decoder inputs are re-indexed decoder_inputs, we create weights.
-    '''
-    print ("finish encoder")
-    print (batch_encoder_inputs)
-    '''
+    
+    #print ("finish encoder")
+    #print (batch_encoder_inputs)
+    
     for length_idx in xrange(decoder_size):
       batch_decoder_inputs.append(
           #[decoder_inputs[batch_idx][length_idx]
