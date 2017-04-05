@@ -247,11 +247,11 @@ class Seq2seqWrapper(Layer):
             loop_function = lambda prev,i: prev
           else:
             loop_function = None
-            '''
+          '''  
           return tf.contrib.legacy_seq2seq.tied_rnn_seq2seq(
             encoder_inputs, decoder_inputs, cell,
             loop_function=loop_function, dtype=tf.float32, scope=None)
-            '''
+          '''  
           return tf.contrib.legacy_seq2seq.basic_rnn_seq2seq(encoder_inputs, decoder_inputs, cell, dtype=tf.float32, scope=None)
 
         #=============================================================
@@ -295,7 +295,7 @@ class Seq2seqWrapper(Layer):
               #softmax_loss_function=softmax_loss_function)
 
         # Gradients and SGD update operation for training the model.
-        '''
+
         params = tf.trainable_variables()
         if not forward_only:
           self.gradient_norms = []
@@ -308,19 +308,22 @@ class Seq2seqWrapper(Layer):
             self.gradient_norms.append(norm)
             self.updates.append(opt.apply_gradients(
                 zip(clipped_gradients, params), global_step=self.global_step))
+        
         '''
         params = tf.trainable_variables()
         if not forward_only:
           self.gradient_norms = []
           self.updates = []
+          opt = tf.train.AdamOptimizer(learning_rate=self.learning_rate)
           for b in xrange(len(buckets)):
             gradients = tf.gradients(self.losses[b], params)
-            clipped_gradients, norm = tf.clip_by_global_norm(gradients,
-                                                             max_gradient_norm)
+            clipped_gradients, norm = tf.clip_by_global_norm(gradients,max_gradient_norm)
             self.gradient_norms.append(norm)
-            self.updates.append(tf.train.AdamOptimizer(learning_rate=self.learning_rate).minimize(self.losses[b]))
+            #self.updates.append(opt.apply_gradients(zip(clipped_gradients, params), global_step=self.global_step))
+            self.updates.append(opt.apply_gradients(zip(gradients, params), global_step=self.global_step))
+        '''
         self.all_params = tf.get_collection(TF_GRAPHKEYS_VARIABLES, scope=vs.name)
-
+        
   def step(self, session, encoder_inputs, decoder_inputs, target_weights,
            bucket_id, forward_only):
     """Run a step of the model feeding the given inputs.
@@ -443,12 +446,7 @@ class Seq2seqWrapper(Layer):
       decoder_pad_size = decoder_size - len(decoder_input) - 1
       decoder_inputs.append([GO_ID] + decoder_input +
                             [PAD_ID] * decoder_pad_size)
-      '''
-    print("encoder_inputs")
-    print (encoder_inputs)
-    print("decoder_inputs")
-    print (decoder_inputs)
-    '''
+
     batch_encoder_inputs, batch_decoder_inputs, batch_weights = [], [], []
     #batch_encoder_inputs:shape[encoder_size*batch_size],each element is a size
     for length_idx in xrange(encoder_size):
@@ -457,9 +455,7 @@ class Seq2seqWrapper(Layer):
                 [ self.id2vec(encoder_inputs[batch_idx][length_idx])
                     for batch_idx in xrange(self.batch_size)])
     # Batch decoder inputs are re-indexed decoder_inputs, we create weights.
-    
-    #print ("finish encoder")
-    #print (batch_encoder_inputs)
+
     
     for length_idx in xrange(decoder_size):
       batch_decoder_inputs.append(
@@ -474,8 +470,4 @@ class Seq2seqWrapper(Layer):
           batch_weight[batch_idx] = 0.0
       batch_weights.append(batch_weight)
       #batch_weight:[decoder_size*batch_size]
-      '''
-    print ("finish decoder")
-    print (batch_decoder_inputs)
-    '''
     return batch_encoder_inputs, batch_decoder_inputs, batch_weights

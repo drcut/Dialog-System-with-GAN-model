@@ -268,9 +268,7 @@ def main_decode():
                           use_lstm = True,
                           forward_only=True)
 
-    #sess.run(tf.initialize_all_variables())
     sess.run(tf.global_variables_initializer())
-#tf.global_variables_initializer
     #Load params
     print("Load parameters from npz")
     load_params = tl.files.load_npz(name=model_file_name+'.npz')
@@ -326,9 +324,9 @@ if __name__ == '__main__':
     sess = tf.InteractiveSession(config=tf.ConfigProto(gpu_options=gpu_options))
     try:
         """ Train model """
-        main_train()
+        #main_train()
         """ Play with model """
-        #main_decode()
+        main_decode()
     except KeyboardInterrupt:
         print('\nKeyboardInterrupt')
         tl.ops.exit_tf(sess)
