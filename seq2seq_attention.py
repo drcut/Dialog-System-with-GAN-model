@@ -37,19 +37,19 @@ _START_VOCAB = [_PAD, _GO, _EOS, _UNK]
 plot_data = True
 # Model
 buckets = [(10, 10), (20, 20), (30, 30), (60, 60)]
-num_layers = 10
+num_layers = 2
 size = 100 #embedding vector size
 PAD_ID_embedding = size*[PAD_ID]
 GO_ID_embedding = size*[GO_ID]
 EOS_ID_embedding = size*[EOS_ID]
 UNK_ID_embedding = size*[UNK_ID]
 # Training
-learning_rate = 5
+learning_rate = 0.5
 learning_rate_decay_factor = 0.99
 max_gradient_norm = 2.0             # Truncated backpropagation
-batch_size = 128
+batch_size = 64
 max_train_data_size = None             # Limit on the size of training data (0: no limit). DH: for fast testing, set a value
-steps_per_checkpoint = 500           # Print, save frequence
+steps_per_checkpoint = 2          # Print, save frequence
 # Save model
 model_file_name = "model_conversition"
 resume = False
@@ -238,9 +238,9 @@ def main_train():
 
             step_time, loss = 0.0, 0.0
             # Run evals on development set and print their perplexity.
+            '''
             for bucket_id in xrange(len(buckets)):
                 if len(dev_set[bucket_id]) == 0:
-                    #print("  eval: empty bucket %d" % (bucket_id))
                     continue
                 encoder_inputs, decoder_inputs, target_weights = model.get_batch(
                         dev_set, bucket_id, PAD_ID, GO_ID, EOS_ID, UNK_ID)
@@ -248,6 +248,8 @@ def main_train():
                                                target_weights, bucket_id, True)
                 eval_ppx = math.exp(eval_loss) if eval_loss < 300 else float('inf')
                 print("  eval: bucket %d perplexity %.2f" % (bucket_id, eval_ppx))
+            
+            '''
             sys.stdout.flush()
 
 def main_decode():
@@ -324,9 +326,9 @@ if __name__ == '__main__':
     sess = tf.InteractiveSession(config=tf.ConfigProto(gpu_options=gpu_options))
     try:
         """ Train model """
-        #main_train()
+        main_train()
         """ Play with model """
-        main_decode()
+        #main_decode()
     except KeyboardInterrupt:
         print('\nKeyboardInterrupt')
         tl.ops.exit_tf(sess)

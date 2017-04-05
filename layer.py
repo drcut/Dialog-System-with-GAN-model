@@ -238,20 +238,21 @@ class Seq2seqWrapper(Layer):
             cell = tf.contrib.rnn.MultiRNNCell([single_cell] * num_layers)
           except:
             cell = tf.nn.rnn_cell.MultiRNNCell([single_cell] * num_layers)
-
         def seq2seq_f(encoder_inputs, decoder_inputs, do_decode):
 
           #loop_function:
           #If not None, this function will be applied to i-th output in order to generate i+1-th input,
           #and decoder_inputs will be ignored
           if(do_decode==True):
-
             loop_function = lambda prev,i: prev
           else:
             loop_function = None
+            '''
           return tf.contrib.legacy_seq2seq.tied_rnn_seq2seq(
             encoder_inputs, decoder_inputs, cell,
             loop_function=loop_function, dtype=tf.float32, scope=None)
+            '''
+          return tf.contrib.legacy_seq2seq.basic_rnn_seq2seq(encoder_inputs, decoder_inputs, cell, dtype=tf.float32, scope=None)
 
         #=============================================================
         # Feeds for inputs.
@@ -274,11 +275,14 @@ class Seq2seqWrapper(Layer):
                    for i in xrange(len(self.decoder_inputs) - 1)]
         self.targets = targets  # DH add for debug
         # Training outputs and losses.
+
+          #x y: (64,100)
         if forward_only:
           self.outputs, self.losses = tf.contrib.legacy_seq2seq.model_with_buckets(
               self.encoder_inputs, self.decoder_inputs, targets,
               self.target_weights, buckets, lambda x, y: seq2seq_f(x, y, True),
-              softmax_loss_function=lambda x,y:tf.losses.mean_squared_error(x, y))
+              softmax_loss_function=lambda x,y:tf.losses.cosine_distance(tf.nn.l2_normalize(x,1), tf.nn.l2_normalize(y,1),dim=1))
+              #softmax_loss_function=lambda x,y:tf.losses.mean_squared_error(tf.nn.l2_normalize(x,0), tf.nn.l2_normalize(y,0)))
               #softmax_loss_function=softmax_loss_function)
 
         else:
@@ -286,10 +290,12 @@ class Seq2seqWrapper(Layer):
               self.encoder_inputs, self.decoder_inputs, targets,
               self.target_weights, buckets,
               lambda x, y: seq2seq_f(x, y, False),
-              softmax_loss_function=lambda x,y:tf.losses.mean_squared_error(x, y))
+              softmax_loss_function=lambda x,y:tf.losses.cosine_distance(tf.nn.l2_normalize(x,1), tf.nn.l2_normalize(y,1),dim=1))
+              #softmax_loss_function=lambda x,y:tf.losses.mean_squared_error(tf.nn.l2_normalize(x,0), tf.nn.l2_normalize(y,0)))
               #softmax_loss_function=softmax_loss_function)
 
         # Gradients and SGD update operation for training the model.
+        '''
         params = tf.trainable_variables()
         if not forward_only:
           self.gradient_norms = []
@@ -302,7 +308,17 @@ class Seq2seqWrapper(Layer):
             self.gradient_norms.append(norm)
             self.updates.append(opt.apply_gradients(
                 zip(clipped_gradients, params), global_step=self.global_step))
-        # if save into npz
+        '''
+        params = tf.trainable_variables()
+        if not forward_only:
+          self.gradient_norms = []
+          self.updates = []
+          for b in xrange(len(buckets)):
+            gradients = tf.gradients(self.losses[b], params)
+            clipped_gradients, norm = tf.clip_by_global_norm(gradients,
+                                                             max_gradient_norm)
+            self.gradient_norms.append(norm)
+            self.updates.append(tf.train.AdamOptimizer(learning_rate=self.learning_rate).minimize(self.losses[b]))
         self.all_params = tf.get_collection(TF_GRAPHKEYS_VARIABLES, scope=vs.name)
 
   def step(self, session, encoder_inputs, decoder_inputs, target_weights,
@@ -339,8 +355,6 @@ class Seq2seqWrapper(Layer):
     if len(target_weights) != decoder_size:
       raise ValueError("Weights length must be equal to the one in bucket,"
                        " %d != %d." % (len(target_weights), decoder_size))
-    # print('in model.step()')
-    # print('a',bucket_id, encoder_size, decoder_size)
 
     # Input feed: encoder inputs, decoder inputs, target_weights, as provided.
     input_feed = {}
@@ -360,12 +374,13 @@ class Seq2seqWrapper(Layer):
     if not forward_only:
       output_feed = [self.updates[bucket_id],  # Update Op that does SGD.
                      self.gradient_norms[bucket_id],  # Gradient norm.
-                     self.losses[bucket_id]]  # Loss for this batch.
+                     self.losses[bucket_id]
+                     ]  # Loss for this batch.
     else:
       output_feed = [self.losses[bucket_id]]  # Loss for this batch.
       for l in xrange(decoder_size):  # Output logits.
         output_feed.append(self.outputs[bucket_id][l])
-    #print("runing")
+
     outputs = session.run(output_feed, input_feed)
     if not forward_only:
       return outputs[1], outputs[2], None  # Gradient norm, loss, no outputs.
