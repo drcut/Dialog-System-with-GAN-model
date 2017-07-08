@@ -8,8 +8,8 @@ batch_size = 2
 embedding_size = 16
 max_len = 5
 num_layers = 3
-num_encoder_symbols = 20
-num_decoder_symbols = 20
+num_symbols = 20
+state_size = 512
 # generate (model 1)
 '''
 question is a tensor of shape [batch_size * max_sequence_len]
@@ -18,10 +18,10 @@ def build_generator(question):
     with tf.variable_scope("generator"):
         single_cell = tf.contrib.rnn.BasicLSTMCell(embedding_size)
         if num_layers > 1:
-            cell = tf.contrib.rnn.MultiRNNCell([single_cell] * 3)
+            cell = tf.contrib.rnn.MultiRNNCell([single_cell] * num_layers)
         def seq2seq_f(encoder_inputs, decoder_inputs):
             return tf.contrib.legacy_seq2seq.embedding_attention_seq2seq(encoder_inputs, 
-                decoder_inputs, cell, num_encoder_symbols, num_decoder_symbols, 
+                decoder_inputs, cell, num_symbols, num_symbols, 
                 embedding_size, output_projection=None, feed_previous=True)
         '''
         input:
@@ -55,43 +55,54 @@ def build_generator(question):
             softmax_loss_function=None, 
             per_example_loss=False, name='model_with_buckets')
     #[decoder_inputs_len x batch_size x num_decoder_symbols]
+    print("outputs[0]")
+    print(outputs[0]) # 2*20 batch_size * num_symbol
     return outputs[0]
 
 # discriminator (model 2)
 def build_discriminator(true_ans, generated_ans, keep_prob):
     with tf.variable_scope("discriminator"):
-        state_size = 512
+        
         def sentence2state(sentence):
             print("sentence")
             print(sentence)#Tensor("true_ans:0", shape=(5, 2), dtype=int32)
-            
+
             #sentence:[max_time, batch_size, num_decoder_symbols]
             #sequence_length:[batch_size]
             with tf.variable_scope("rnn_encoder"):
                 single_cell = tf.contrib.rnn.BasicLSTMCell(state_size)
                 if num_layers > 1:
-                    cell = tf.contrib.rnn.MultiRNNCell([single_cell] * 3)
+                    cell = tf.contrib.rnn.MultiRNNCell([single_cell] * num_layers)
                 outputs, state = tf.nn.dynamic_rnn(cell, sentence, 
                     sequence_length=None, initial_state=None,dtype=tf.float32,
                     time_major=True)
+                #print("cell")
+                #print(cell.state_size)
                 return state #[batch_size, cell.state_size]
         def state2sigmoid(state):
             h1_size = 512
-            h2_size = 512
-            h3_size = 128
+            h2_size = 256
+            print("state")
+            print(state)
+            res = tf.reshape(state,[batch_size,-1])
+            print(res)
             with tf.variable_scope("state2sigmoid"):
-                w1 = tf.Variable(tf.truncated_normal([state_size, h1_size], stddev=0.1),name="d_w1", dtype=tf.float32)
+                w1 = tf.Variable(tf.truncated_normal([num_layers * state_size, h1_size], stddev=0.1),name="d_w1", dtype=tf.float32)
                 b1 = tf.Variable(tf.zeros([h1_size]), name="d_b1", dtype=tf.float32)
-                h1 = tf.nn.dropout(tf.nn.relu(tf.matmul(x_in, w1) + b1), keep_prob)
-                w2 = tf.Variable(tf.truncated_normal([h2_size, h1_size], stddev=0.1), name="d_w2", dtype=tf.float32)
-                b2 = tf.Variable(tf.zeros([h1_size]), name="d_b2", dtype=tf.float32)
+                h1 = tf.nn.dropout(tf.nn.relu(tf.matmul(res, w1) + b1), keep_prob)
+                w2 = tf.Variable(tf.truncated_normal([h1_size, h2_size], stddev=0.1), name="d_w2", dtype=tf.float32)
+                b2 = tf.Variable(tf.zeros([h2_size]), name="d_b2", dtype=tf.float32)
                 h2 = tf.nn.dropout(tf.nn.relu(tf.matmul(h1, w2) + b2), keep_prob)
-                w3 = tf.Variable(tf.truncated_normal([h1_size, 1], stddev=0.1), name="d_w3", dtype=tf.float32)
+                w3 = tf.Variable(tf.truncated_normal([h2_size, 1], stddev=0.1), name="d_w3", dtype=tf.float32)
                 b3 = tf.Variable(tf.zeros([1]), name="d_b3", dtype=tf.float32)
                 h3 = tf.matmul(h2, w3) + b3
                 return tf.nn.sigmoid(h3)
 
         with tf.variable_scope("twinsNN") as scope:
+            print("true ans")
+            print(true_ans) #[max_len ,batch_size]
+            print("fake")
+            print(generated_ans)
             true_state = sentence2state(true_ans)
             scope.reuse_variables()
             fake_state = sentence2state(generated_ans)
@@ -110,16 +121,26 @@ def train():
     # 创建生成模型
     generated_ans = build_generator(question)
     # 创建判别模型
-    y_data, y_generated = build_discriminator(true_ans, generated_ans, keep_prob)
+    #generated_ans max_len[batch_size * num_symbol ] a list of 2D tensor
+    #true ans  max_len * batch_size
+    print("compare")
+    print(tf.one_hot(true_ans,num_symbols,on_value=1.0,off_value=0.0,axis=-1,dtype=tf.float32))
+    print(tf.convert_to_tensor(generated_ans))
+    y_data, y_generated = build_discriminator(tf.one_hot(true_ans,num_symbols,
+                                                            on_value=1.0,off_value=0.0,axis=-1,
+                                                            dtype=tf.float32,name="onehot"), 
+                                            tf.convert_to_tensor(generated_ans), keep_prob)
 
     # 损失函数的设置
     d_loss = - (tf.log(y_data) + tf.log(1 - y_generated))
-    g_loss = - tf.log(y_generated)
+    g_loss =  - tf.log(y_generated)
+    print("loss")
+    print(d_loss)
 
     optimizer = tf.train.AdamOptimizer(0.0001)
 
-    d_params = tf.get_collection(TRAINABLE_VARIABLES,scope = "discriminator")
-    g_params = tf.get_collection(TRAINABLE_VARIABLES,scope = "generator")
+    d_params = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES,scope = "discriminator")
+    g_params = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES,scope = "generator")
     # 两个模型的优化函数
     d_trainer = optimizer.minimize(d_loss, var_list=d_params)
     g_trainer = optimizer.minimize(g_loss, var_list=g_params)
