@@ -1,36 +1,24 @@
 # encoding: utf-8  
 import tensorflow as tf
-from tensorflow.examples.tutorials.mnist import input_data
 import numpy as np
-from skimage.io import imsave
 import os
 import shutil
 
-img_height = 28
-img_width = 28
-img_size = img_height * img_width
-
-to_train = True
-to_restore = False
-output_path = "output"
-
-# 总迭代次数500
-max_epoch = 500
-
-h1_size = 150
-h2_size = 300
-z_size = 100
-batch_size = 256
-
+batch_size = 2
+embedding_size = 16
+max_len = 5
+num_layers = 3
+num_encoder_symbols = 20
+num_decoder_symbols = 20
 # generate (model 1)
 '''
 question is a tensor of shape [batch_size * max_sequence_len]
 '''
 def build_generator(question):
     with tf.variable_scope("generator"):
-        tf.contrib.rnn.BasicLSTMCell(size)
+        single_cell = tf.contrib.rnn.BasicLSTMCell(embedding_size)
         if num_layers > 1:
-            cell = tf.contrib.rnn.MultiRNNCell([single_cell] * num_layers)
+            cell = tf.contrib.rnn.MultiRNNCell([single_cell] * 3)
         def seq2seq_f(encoder_inputs, decoder_inputs):
             return tf.contrib.legacy_seq2seq.embedding_attention_seq2seq(encoder_inputs, 
                 decoder_inputs, cell, num_encoder_symbols, num_decoder_symbols, 
@@ -46,26 +34,45 @@ def build_generator(question):
         so it seems like a one-hot coding,and although we don't need to use decoder_inputs
         as input,we should let it as long as possible to get enough result
         '''
-        outputs, losses = tf.contrib.legacy_seq2seq.model_with_buckets(encoder_inputs, decoder_inputs, targets, 
-            weights, buckets, seq2seq, 
+        encoder_inputs = []
+        decoder_inputs = []
+        target_weights = []
+
+        for l in xrange(5):
+        	encoder_inputs.append(tf.placeholder(tf.int32, shape=[batch_size],
+                                                    name="encoder{0}".format(l)))
+        for l in xrange(5):
+        	decoder_inputs.append(tf.placeholder(tf.int32, shape=[batch_size],
+                                                    name="decoder{0}".format(l)))
+          	target_weights.append(tf.placeholder(tf.float32, shape=[batch_size],
+                                              name="weight{0}".format(l)))
+
+        targets = decoder_inputs
+          
+        outputs, losses = tf.contrib.legacy_seq2seq.model_with_buckets(
+        	encoder_inputs, decoder_inputs, targets, 
+            target_weights, [[5,5]], seq2seq_f, 
             softmax_loss_function=None, 
             per_example_loss=False, name='model_with_buckets')
     #[decoder_inputs_len x batch_size x num_decoder_symbols]
-    return outputs
+    return outputs[0]
 
 # discriminator (model 2)
 def build_discriminator(true_ans, generated_ans, keep_prob):
     with tf.variable_scope("discriminator"):
         state_size = 512
         def sentence2state(sentence):
+            print("sentence")
+            print(sentence)#Tensor("true_ans:0", shape=(5, 2), dtype=int32)
+            
             #sentence:[max_time, batch_size, num_decoder_symbols]
             #sequence_length:[batch_size]
             with tf.variable_scope("rnn_encoder"):
                 single_cell = tf.contrib.rnn.BasicLSTMCell(state_size)
                 if num_layers > 1:
-                    cell = tf.contrib.rnn.MultiRNNCell([single_cell] * num_layers)
+                    cell = tf.contrib.rnn.MultiRNNCell([single_cell] * 3)
                 outputs, state = tf.nn.dynamic_rnn(cell, sentence, 
-                    sequence_length=None, initial_state=None, 
+                    sequence_length=None, initial_state=None,dtype=tf.float32,
                     time_major=True)
                 return state #[batch_size, cell.state_size]
         def state2sigmoid(state):
@@ -89,14 +96,17 @@ def build_discriminator(true_ans, generated_ans, keep_prob):
             scope.reuse_variables()
             fake_state = sentence2state(generated_ans)
             true_pos = state2sigmoid(true_state)
+            scope.reuse_variables()
             fake_pos = state2sigmoid(fake_state)
     return true_pos, fake_pos
 
 def train():
-    
-    keep_prob = tf.placeholder(tf.float32, name="keep_prob")
+    ini_question = [[1,3],[2,3],[4,1],[5,3],[6,6]]
+    ini_ans = [[2,2],[1,9],[7,1],[2,1],[3,3]]
+    keep_prob = tf.constant(0.5,tf.float32, name="keep_prob")
     global_step = tf.Variable(0, name="global_step", trainable=False)
-    x_data = tf.placeholder(tf.float32, [batch_size, img_size], name="x_data")
+    question = tf.placeholder(tf.int32, [max_len ,batch_size], name="question")
+    true_ans = tf.placeholder(tf.int32, [max_len ,batch_size], name = "true_ans")
     # 创建生成模型
     generated_ans = build_generator(question)
     # 创建判别模型
@@ -116,57 +126,28 @@ def train():
 
     init = tf.initialize_all_variables()
 
-    saver = tf.train.Saver()
+#    saver = tf.train.Saver()
     # 启动默认图
     sess = tf.Session()
     # 初始化
     sess.run(init)
-
-    if to_restore:
-        chkpt_fname = tf.train.latest_checkpoint(output_path)
-        saver.restore(sess, chkpt_fname)
-    else:
-        if os.path.exists(output_path):
-            shutil.rmtree(output_path)
-        os.mkdir(output_path)
-
-    steps = 60000 / batch_size
+    steps = 5
+    max_epoch = 5
     for i in range(sess.run(global_step), max_epoch):
         for j in np.arange(steps):
             print("epoch:%s, iter:%s" % (i, j))
-            # 每一步迭代，我们都会加载256个训练样本，然后执行一次train_step
-            question, ans = mnist.train.next_batch(batch_size)
-            # 执行生成
-            sess.run(d_trainer,
-                     feed_dict={x_data: x_value, z_prior: z_value, keep_prob: np.sum(0.7).astype(np.float32)})
-            # 执行判别
-            if j % 1 == 0:
-                sess.run(g_trainer,
-                         feed_dict={x_data: x_value, z_prior: z_value, keep_prob: np.sum(0.7).astype(np.float32)})
-        x_gen_val = sess.run(x_generated, feed_dict={z_prior: z_sample_val})
-        show_result(x_gen_val, "output/sample{0}.jpg".format(i))
-        z_random_sample_val = np.random.normal(0, 1, size=(batch_size, z_size)).astype(np.float32)
-        x_gen_val = sess.run(x_generated, feed_dict={z_prior: z_random_sample_val})
-        show_result(x_gen_val, "output/random_sample{0}.jpg".format(i))
+            batch_question, batch_ans = ini_question, ini_ans
+            input_feed = {}
+            for l in xrange(5):#[encoder_size*batch_size]
+		        input_feed[self.encoder_inputs[l].name] = ini_question[l]
+            for l in xrange(5):
+		    	input_feed[self.decoder_inputs[l].name] = ini_ans[l]
+		    	input_feed[self.target_weights[l].name] = 1.0
+            sess.run(d_trainer,feed_dict=input_feed)
+            sess.run(g_trainer,feed_dict=input_feed)
+        gen_val = sess.run(generated_ans, feed_dict=input_feed)
+        print(gen_val)
         sess.run(tf.assign(global_step, i + 1))
-        saver.save(sess, os.path.join(output_path, "model"), global_step=global_step)
-
-def test():
-    z_prior = tf.placeholder(tf.float32, [batch_size, z_size], name="z_prior")
-    x_generated, _ = build_generator(z_prior)
-    chkpt_fname = tf.train.latest_checkpoint(output_path)
-
-    init = tf.initialize_all_variables()
-    sess = tf.Session()
-    saver = tf.train.Saver()
-    sess.run(init)
-    saver.restore(sess, chkpt_fname)
-    z_test_value = np.random.normal(0, 1, size=(batch_size, z_size)).astype(np.float32)
-    x_gen_val = sess.run(x_generated, feed_dict={z_prior: z_test_value})
-    show_result(x_gen_val, "output/test_result.jpg")
 
 if __name__ == '__main__':
-    if to_train:
-        train()
-    else:
-        test()
+    train()
