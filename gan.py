@@ -24,69 +24,83 @@ batch_size = 256
 
 # generate (model 1)
 '''
-input is a tensor of shape [batch_size * max_sequence_len]
+question is a tensor of shape [batch_size * max_sequence_len]
 '''
-def build_generator(z_prior):
-    w1 = tf.Variable(tf.truncated_normal([z_size, h1_size], stddev=0.1), name="g_w1", dtype=tf.float32)
-    b1 = tf.Variable(tf.zeros([h1_size]), name="g_b1", dtype=tf.float32)
-    h1 = tf.nn.relu(tf.matmul(z_prior, w1) + b1)
-    w2 = tf.Variable(tf.truncated_normal([h1_size, h2_size], stddev=0.1), name="g_w2", dtype=tf.float32)
-    b2 = tf.Variable(tf.zeros([h2_size]), name="g_b2", dtype=tf.float32)
-    h2 = tf.nn.relu(tf.matmul(h1, w2) + b2)
-    w3 = tf.Variable(tf.truncated_normal([h2_size, img_size], stddev=0.1), name="g_w3", dtype=tf.float32)
-    b3 = tf.Variable(tf.zeros([img_size]), name="g_b3", dtype=tf.float32)
-    h3 = tf.matmul(h2, w3) + b3
-    x_generate = tf.nn.tanh(h3)
-    g_params = [w1, b1, w2, b2, w3, b3]
-    return x_generate, g_params
+def build_generator(question):
+    with tf.variable_scope("generator"):
+        tf.contrib.rnn.BasicLSTMCell(size)
+        if num_layers > 1:
+            cell = tf.contrib.rnn.MultiRNNCell([single_cell] * num_layers)
+        def seq2seq_f(encoder_inputs, decoder_inputs):
+            return tf.contrib.legacy_seq2seq.embedding_attention_seq2seq(encoder_inputs, 
+                decoder_inputs, cell, num_encoder_symbols, num_decoder_symbols, 
+                embedding_size, output_projection=None, feed_previous=True)
+        '''
+        input:
+        encoder_inputs: A list of 1D int32 Tensors of shape [batch_size].
+        decoder_inputs: A list of 1D int32 Tensors of shape [batch_size].
+        returns:
+        outputs
+        A list of the same length as decoder_inputs of 2D Tensors 
+        with shape [batch_size x num_decoder_symbols] containing the generated outputs
+        so it seems like a one-hot coding,and although we don't need to use decoder_inputs
+        as input,we should let it as long as possible to get enough result
+        '''
+        outputs, losses = tf.contrib.legacy_seq2seq.model_with_buckets(encoder_inputs, decoder_inputs, targets, 
+            weights, buckets, seq2seq, 
+            softmax_loss_function=None, 
+            per_example_loss=False, name='model_with_buckets')
+    #[decoder_inputs_len x batch_size x num_decoder_symbols]
+    return outputs
 
 # discriminator (model 2)
-def build_discriminator(x_data, x_generated, keep_prob):
-    # tf.concat
-    x_in = tf.concat([x_data, x_generated],0)
-    w1 = tf.Variable(tf.truncated_normal([img_size, h2_size], stddev=0.1), name="d_w1", dtype=tf.float32)
-    b1 = tf.Variable(tf.zeros([h2_size]), name="d_b1", dtype=tf.float32)
-    h1 = tf.nn.dropout(tf.nn.relu(tf.matmul(x_in, w1) + b1), keep_prob)
-    w2 = tf.Variable(tf.truncated_normal([h2_size, h1_size], stddev=0.1), name="d_w2", dtype=tf.float32)
-    b2 = tf.Variable(tf.zeros([h1_size]), name="d_b2", dtype=tf.float32)
-    h2 = tf.nn.dropout(tf.nn.relu(tf.matmul(h1, w2) + b2), keep_prob)
-    w3 = tf.Variable(tf.truncated_normal([h1_size, 1], stddev=0.1), name="d_w3", dtype=tf.float32)
-    b3 = tf.Variable(tf.zeros([1]), name="d_b3", dtype=tf.float32)
-    h3 = tf.matmul(h2, w3) + b3
-    y_data = tf.nn.sigmoid(tf.slice(h3, [0, 0], [batch_size, -1], name=None))
-    y_generated = tf.nn.sigmoid(tf.slice(h3, [batch_size, 0], [-1, -1], name=None))
-    d_params = [w1, b1, w2, b2, w3, b3]
-    return y_data, y_generated, d_params
+def build_discriminator(true_ans, generated_ans, keep_prob):
+    with tf.variable_scope("discriminator"):
+        state_size = 512
+        def sentence2state(sentence):
+            #sentence:[max_time, batch_size, num_decoder_symbols]
+            #sequence_length:[batch_size]
+            with tf.variable_scope("rnn_encoder"):
+                single_cell = tf.contrib.rnn.BasicLSTMCell(state_size)
+                if num_layers > 1:
+                    cell = tf.contrib.rnn.MultiRNNCell([single_cell] * num_layers)
+                outputs, state = tf.nn.dynamic_rnn(cell, sentence, 
+                    sequence_length=None, initial_state=None, 
+                    time_major=True)
+                return state #[batch_size, cell.state_size]
+        def state2sigmoid(state):
+            h1_size = 512
+            h2_size = 512
+            h3_size = 128
+            with tf.variable_scope("state2sigmoid"):
+                w1 = tf.Variable(tf.truncated_normal([state_size, h1_size], stddev=0.1),name="d_w1", dtype=tf.float32)
+                b1 = tf.Variable(tf.zeros([h1_size]), name="d_b1", dtype=tf.float32)
+                h1 = tf.nn.dropout(tf.nn.relu(tf.matmul(x_in, w1) + b1), keep_prob)
+                w2 = tf.Variable(tf.truncated_normal([h2_size, h1_size], stddev=0.1), name="d_w2", dtype=tf.float32)
+                b2 = tf.Variable(tf.zeros([h1_size]), name="d_b2", dtype=tf.float32)
+                h2 = tf.nn.dropout(tf.nn.relu(tf.matmul(h1, w2) + b2), keep_prob)
+                w3 = tf.Variable(tf.truncated_normal([h1_size, 1], stddev=0.1), name="d_w3", dtype=tf.float32)
+                b3 = tf.Variable(tf.zeros([1]), name="d_b3", dtype=tf.float32)
+                h3 = tf.matmul(h2, w3) + b3
+                return tf.nn.sigmoid(h3)
 
-def show_result(batch_res, fname, grid_size=(8, 8), grid_pad=5):
-    batch_res = 0.5 * batch_res.reshape((batch_res.shape[0], img_height, img_width)) + 0.5
-    img_h, img_w = batch_res.shape[1], batch_res.shape[2]
-    grid_h = img_h * grid_size[0] + grid_pad * (grid_size[0] - 1)
-    grid_w = img_w * grid_size[1] + grid_pad * (grid_size[1] - 1)
-    img_grid = np.zeros((grid_h, grid_w), dtype=np.uint8)
-    for i, res in enumerate(batch_res):
-        if i >= grid_size[0] * grid_size[1]:
-            break
-        img = (res) * 255
-        img = img.astype(np.uint8)
-        row = (i // grid_size[0]) * (img_h + grid_pad)
-        col = (i % grid_size[1]) * (img_w + grid_pad)
-        img_grid[row:row + img_h, col:col + img_w] = img
-    imsave(fname, img_grid)
+        with tf.variable_scope("twinsNN") as scope:
+            true_state = sentence2state(true_ans)
+            scope.reuse_variables()
+            fake_state = sentence2state(generated_ans)
+            true_pos = state2sigmoid(true_state)
+            fake_pos = state2sigmoid(fake_state)
+    return true_pos, fake_pos
 
 def train():
-    # load data（mnist手写数据集）
-    mnist = input_data.read_data_sets('MNIST_data', one_hot=True)
     
-    x_data = tf.placeholder(tf.float32, [batch_size, img_size], name="x_data")
-    z_prior = tf.placeholder(tf.float32, [batch_size, z_size], name="z_prior")
     keep_prob = tf.placeholder(tf.float32, name="keep_prob")
     global_step = tf.Variable(0, name="global_step", trainable=False)
-
+    x_data = tf.placeholder(tf.float32, [batch_size, img_size], name="x_data")
     # 创建生成模型
-    x_generated, g_params = build_generator(z_prior)
+    generated_ans = build_generator(question)
     # 创建判别模型
-    y_data, y_generated, d_params = build_discriminator(x_data, x_generated, keep_prob)
+    y_data, y_generated = build_discriminator(true_ans, generated_ans, keep_prob)
 
     # 损失函数的设置
     d_loss = - (tf.log(y_data) + tf.log(1 - y_generated))
@@ -94,6 +108,8 @@ def train():
 
     optimizer = tf.train.AdamOptimizer(0.0001)
 
+    d_params = tf.get_collection(TRAINABLE_VARIABLES,scope = "discriminator")
+    g_params = tf.get_collection(TRAINABLE_VARIABLES,scope = "generator")
     # 两个模型的优化函数
     d_trainer = optimizer.minimize(d_loss, var_list=d_params)
     g_trainer = optimizer.minimize(g_loss, var_list=g_params)
@@ -114,17 +130,12 @@ def train():
             shutil.rmtree(output_path)
         os.mkdir(output_path)
 
-    z_sample_val = np.random.normal(0, 1, size=(batch_size, z_size)).astype(np.float32)
-
     steps = 60000 / batch_size
     for i in range(sess.run(global_step), max_epoch):
         for j in np.arange(steps):
-#         for j in range(steps):
             print("epoch:%s, iter:%s" % (i, j))
             # 每一步迭代，我们都会加载256个训练样本，然后执行一次train_step
-            x_value, _ = mnist.train.next_batch(batch_size)
-            x_value = 2 * x_value.astype(np.float32) - 1
-            z_value = np.random.normal(0, 1, size=(batch_size, z_size)).astype(np.float32)
+            question, ans = mnist.train.next_batch(batch_size)
             # 执行生成
             sess.run(d_trainer,
                      feed_dict={x_data: x_value, z_prior: z_value, keep_prob: np.sum(0.7).astype(np.float32)})
