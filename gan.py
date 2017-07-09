@@ -32,10 +32,17 @@ def build_generator(encoder_inputs,decoder_inputs,target_weights):
         cell = tf.contrib.rnn.BasicLSTMCell(embedding_size)
         if num_layers > 1:
             cell = tf.contrib.rnn.MultiRNNCell([cell] * num_layers)
+
+        # Sampled softmax only makes sense if we sample less than vocabulary size.
+        w = tf.get_variable("proj_w", [embedding_size, num_symbols])
+        w_t = tf.transpose(w)
+        b = tf.get_variable("proj_b", [num_symbols])
+        output_projection = (w, b)
+
         def seq2seq_f(encoder_inputs, decoder_inputs):
             return tf.contrib.legacy_seq2seq.embedding_attention_seq2seq(encoder_inputs, 
                 decoder_inputs, cell, num_symbols, num_symbols, 
-                embedding_size, output_projection=None, feed_previous=True)
+                embedding_size, output_projection=output_projection, feed_previous=True)
         '''
         input:
         encoder_inputs: A list of 1D int32 Tensors of shape [batch_size].
