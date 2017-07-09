@@ -52,6 +52,8 @@ class DataProvider(object):
             feed_dict['decoder{}'.format(i)] = a.astype('int32')
             feed_dict['weight{}'.format(i)] = np.ones(self.batch_size, 'float32')
 
+        feed_dict['bucket_id'] = bucket_id
+
         return feed_dict
 
     def put_into_bucket(self, tid, pid):
