@@ -10,6 +10,12 @@ max_len = 5
 num_layers = 3
 num_symbols = 20
 state_size = 512
+'''
+test data
+'''
+ini_question = [[1,3],[2,3],[4,1],[5,3],[6,6]]
+ini_ans = [[2,2],[1,9],[7,1],[2,1],[3,3]]
+keep_prob = tf.constant(0.5,tf.float32, name="keep_prob")
 # generate (model 1)
 '''
 question is a tensor of shape [batch_size * max_sequence_len]
@@ -17,7 +23,7 @@ question is a tensor of shape [batch_size * max_sequence_len]
 encoder_inputs = []
 decoder_inputs = []
 target_weights = []
-def build_generator(question):
+def build_generator(encoder_inputs,decoder_inputs,target_weights):
     with tf.variable_scope("generator"):
         cell = tf.contrib.rnn.BasicLSTMCell(embedding_size)
         if num_layers > 1:
@@ -37,15 +43,6 @@ def build_generator(question):
         so it seems like a one-hot coding,and although we don't need to use decoder_inputs
         as input,we should let it as long as possible to get enough result
         '''
-        for l in xrange(5):
-        	encoder_inputs.append(tf.placeholder(tf.int32, shape=[batch_size],
-                                                    name="encoder{0}".format(l)))
-        for l in xrange(5):
-        	decoder_inputs.append(tf.placeholder(tf.int32, shape=[batch_size],
-                                                    name="decoder{0}".format(l)))
-          	target_weights.append(tf.placeholder(tf.float32, shape=[batch_size],
-                                              name="weight{0}".format(l)))
-
         targets = decoder_inputs
           
         outputs, losses = tf.contrib.legacy_seq2seq.model_with_buckets(
@@ -54,8 +51,8 @@ def build_generator(question):
             softmax_loss_function=None, 
             per_example_loss=False, name='model_with_buckets')
     #[decoder_inputs_len x batch_size x num_decoder_symbols]
-    #print("outputs[0]")
-    #print(outputs[0]) # 2*20 batch_size * num_symbol
+
+    # [batch_size * num_symbol]
     return outputs[0]
 
 # discriminator (model 2)
@@ -88,7 +85,8 @@ def build_discriminator(true_ans, generated_ans, keep_prob):
             h2_size = 256
             res = tf.reshape(state,[batch_size,-1])
             with tf.variable_scope("state2sigmoid"):
-                w1 = tf.Variable(tf.truncated_normal([num_layers * state_size, h1_size], stddev=0.1),name="d_w1", dtype=tf.float32)
+                #state * 2 stand for c and h in lstm_state
+                w1 = tf.Variable(tf.truncated_normal([state_size*2, h1_size], stddev=0.1),name="d_w1", dtype=tf.float32)
                 b1 = tf.Variable(tf.zeros([h1_size]), name="d_b1", dtype=tf.float32)
                 h1 = tf.nn.dropout(tf.nn.relu(tf.matmul(res, w1) + b1), keep_prob)
                 w2 = tf.Variable(tf.truncated_normal([h1_size, h2_size], stddev=0.1), name="d_w2", dtype=tf.float32)
@@ -110,14 +108,19 @@ def build_discriminator(true_ans, generated_ans, keep_prob):
     return true_pos, fake_pos
 
 def train():
-    ini_question = [[1,3],[2,3],[4,1],[5,3],[6,6]]
-    ini_ans = [[2,2],[1,9],[7,1],[2,1],[3,3]]
-    keep_prob = tf.constant(0.5,tf.float32, name="keep_prob")
+    for l in xrange(5):
+        encoder_inputs.append(tf.placeholder(tf.int32, shape=[batch_size],
+                                                    name="encoder{0}".format(l)))
+    for l in xrange(5):
+        decoder_inputs.append(tf.placeholder(tf.int32, shape=[batch_size],
+                                                    name="decoder{0}".format(l)))
+        target_weights.append(tf.placeholder(tf.float32, shape=[batch_size],
+                                              name="weight{0}".format(l)))
+
     global_step = tf.Variable(0, name="global_step", trainable=False)
-    question = tf.placeholder(tf.int32, [max_len ,batch_size], name="question")
     true_ans = tf.placeholder(tf.int32, [max_len ,batch_size], name = "true_ans")
     # 创建生成模型
-    generated_ans = build_generator(question)
+    generated_ans = build_generator(encoder_inputs,decoder_inputs,target_weights)
     # 创建判别模型
     y_data, y_generated = build_discriminator(tf.one_hot(true_ans,num_symbols,
                                                             on_value=1.0,off_value=0.0,axis=-1,
@@ -154,7 +157,8 @@ def train():
 		        input_feed[encoder_inputs[l].name] = ini_question[l]
             for l in xrange(5):
 		    	input_feed[decoder_inputs[l].name] = ini_ans[l]
-		    	input_feed[target_weights[l].name] = 1.0
+		    	input_feed[target_weights[l].name] = [1.0,1.0]
+            input_feed[true_ans.name] = ini_ans
             sess.run(d_trainer,feed_dict=input_feed)
             sess.run(g_trainer,feed_dict=input_feed)
         gen_val = sess.run(generated_ans, feed_dict=input_feed)
