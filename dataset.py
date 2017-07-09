@@ -53,6 +53,15 @@ class DataProvider(object):
             feed_dict['decoder{}:0'.format(i)] = a.astype('int32')
             feed_dict['weight{}:0'.format(i)] = np.ones(self.batch_size, 'float32')
 
+        feed_dict['true_ans:0'] = np.pad(a_batch, ((0, self.buckets_size[-1][1] - self.buckets_size[bucket_id][1]), (0, 0)), 'constant')
+
+        # Placeholder
+        for i in xrange(self.buckets_size[bucket_id][0], self.buckets_size[-1][0]):
+            feed_dict['encoder{}:0'.format(i)] = np.zeros(shape=self.batch_size, dtype='int32')
+        for i in xrange(self.buckets_size[bucket_id][1], self.buckets_size[-1][1]):
+            feed_dict['decoder{}:0'.format(i)] = np.zeros(shape=self.batch_size, dtype='int32')
+            feed_dict['weight{}:0'.format(i)] = np.zeros(shape=self.batch_size, dtype='float32')
+
         #feed_dict['bucket_id'] = bucket_id
 
         return feed_dict
