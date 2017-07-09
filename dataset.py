@@ -1,6 +1,7 @@
 import numpy as np
 import pickle
 
+
 _PAD = 0
 
 
@@ -22,7 +23,7 @@ class DataProvider(object):
             if bucket_id != -1:
                 self.buckets[bucket_id].append((tid, pid))
                 if len(self.buckets[bucket_id]) == self.batch_size:
-                    yield self.build_feed_dict(bucket_id)
+                    yield (self.build_feed_dict(bucket_id), bucket_id)
                     self.buckets[bucket_id] = []    # empty the bucket
 
     def build_feed_dict(self, bucket_id):
@@ -47,12 +48,12 @@ class DataProvider(object):
         a_batch = np.transpose(a_batch)
         feed_dict = {}
         for i, q in enumerate(q_batch):
-            feed_dict['encoder{}'.format(i)] = q.astype('int32')
+            feed_dict['encoder{}:0'.format(i)] = q.astype('int32')
         for i, a in enumerate(a_batch):
-            feed_dict['decoder{}'.format(i)] = a.astype('int32')
-            feed_dict['weight{}'.format(i)] = np.ones(self.batch_size, 'float32')
+            feed_dict['decoder{}:0'.format(i)] = a.astype('int32')
+            feed_dict['weight{}:0'.format(i)] = np.ones(self.batch_size, 'float32')
 
-        feed_dict['bucket_id'] = bucket_id
+        #feed_dict['bucket_id'] = bucket_id
 
         return feed_dict
 

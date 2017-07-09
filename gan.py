@@ -3,13 +3,15 @@ import tensorflow as tf
 import numpy as np
 import os
 import shutil
+import dataset
 
 batch_size = 2
 embedding_size = 16
-max_len = 5
+max_len = 80
 num_layers = 3
-num_symbols = 20
+num_symbols = 20000
 state_size = 512
+buckets_size = [(5,5),(10,10),(20,20),(40,40),(80,80)]
 '''
 test data
 '''
@@ -23,7 +25,9 @@ question is a tensor of shape [batch_size * max_sequence_len]
 encoder_inputs = []
 decoder_inputs = []
 target_weights = []
+BUCKET_ID = 0
 def build_generator(encoder_inputs,decoder_inputs,target_weights):
+    global BUCKET_ID
     with tf.variable_scope("generator"):
         cell = tf.contrib.rnn.BasicLSTMCell(embedding_size)
         if num_layers > 1:
@@ -44,16 +48,21 @@ def build_generator(encoder_inputs,decoder_inputs,target_weights):
         as input,we should let it as long as possible to get enough result
         '''
         targets = decoder_inputs
-          
+        '''
         outputs, losses = tf.contrib.legacy_seq2seq.model_with_buckets(
         	encoder_inputs, decoder_inputs, targets, 
-            target_weights, [[5,5]], seq2seq_f, 
+            target_weights, buckets_size, seq2seq_f, 
             softmax_loss_function=None, 
             per_example_loss=False, name='model_with_buckets')
+        '''
+        outputs, losses = tf.contrib.legacy_seq2seq.embedding_attention_seq2seq(encoder_inputs, 
+                decoder_inputs, cell, num_symbols, num_symbols, 
+                embedding_size, output_projection=None, feed_previous=True)
     #[decoder_inputs_len x batch_size x num_decoder_symbols]
 
     # [batch_size * num_symbol]
-    return outputs[0]
+    return outputs
+    #return outputs[BUCKET_ID] #return bucket-0's result
 
 # discriminator (model 2)
 def build_discriminator(true_ans, generated_ans, keep_prob):
@@ -108,17 +117,20 @@ def build_discriminator(true_ans, generated_ans, keep_prob):
     return true_pos, fake_pos
 
 def train():
-    for l in xrange(5):
+    global BUCKET_ID
+    for l in xrange(max_len):
         encoder_inputs.append(tf.placeholder(tf.int32, shape=[batch_size],
                                                     name="encoder{0}".format(l)))
-    for l in xrange(5):
+    for l in xrange(max_len):
         decoder_inputs.append(tf.placeholder(tf.int32, shape=[batch_size],
                                                     name="decoder{0}".format(l)))
         target_weights.append(tf.placeholder(tf.float32, shape=[batch_size],
                                               name="weight{0}".format(l)))
-
+    #print(decoder_inputs[0])
+    #print(decoder_inputs[1])
     global_step = tf.Variable(0, name="global_step", trainable=False)
     true_ans = tf.placeholder(tf.int32, [max_len ,batch_size], name = "true_ans")
+    #bucket_id = tf.placeholder(tf.int32, 1, name="bucket_id")
     # 创建生成模型
     generated_ans = build_generator(encoder_inputs,decoder_inputs,target_weights)
     # 创建判别模型
@@ -148,9 +160,13 @@ def train():
     sess.run(init)
     steps = 5
     max_epoch = 5
+    get_data = dataset.DataProvider(pkl_path='./bdwm_data_token.pkl',
+                            buckets_size=buckets_size,batch_size=batch_size)
     for i in range(sess.run(global_step), max_epoch):
+        data_iterator = get_data.get_batch()
         for j in np.arange(steps):
             print("epoch:%s, iter:%s" % (i, j))
+            '''
             batch_question, batch_ans = ini_question, ini_ans
             input_feed = {}
             for l in xrange(5):#[encoder_size*batch_size]
@@ -159,8 +175,10 @@ def train():
 		    	input_feed[decoder_inputs[l].name] = ini_ans[l]
 		    	input_feed[target_weights[l].name] = [1.0,1.0]
             input_feed[true_ans.name] = ini_ans
-            sess.run(d_trainer,feed_dict=input_feed)
-            sess.run(g_trainer,feed_dict=input_feed)
+            '''
+            feed_dict, BUCKET_ID = data_iterator.next()
+            sess.run(d_trainer,feed_dict=feed_dict)
+            sess.run(g_trainer,feed_dict=feed_dict)
         gen_val = sess.run(generated_ans, feed_dict=input_feed)
         print(gen_val)
         sess.run(tf.assign(global_step, i + 1))
