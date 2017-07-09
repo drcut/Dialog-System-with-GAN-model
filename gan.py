@@ -14,11 +14,14 @@ state_size = 512
 '''
 question is a tensor of shape [batch_size * max_sequence_len]
 '''
+encoder_inputs = []
+decoder_inputs = []
+target_weights = []
 def build_generator(question):
     with tf.variable_scope("generator"):
-        single_cell = tf.contrib.rnn.BasicLSTMCell(embedding_size)
+        cell = tf.contrib.rnn.BasicLSTMCell(embedding_size)
         if num_layers > 1:
-            cell = tf.contrib.rnn.MultiRNNCell([single_cell] * num_layers)
+            cell = tf.contrib.rnn.MultiRNNCell([cell] * num_layers)
         def seq2seq_f(encoder_inputs, decoder_inputs):
             return tf.contrib.legacy_seq2seq.embedding_attention_seq2seq(encoder_inputs, 
                 decoder_inputs, cell, num_symbols, num_symbols, 
@@ -34,10 +37,6 @@ def build_generator(question):
         so it seems like a one-hot coding,and although we don't need to use decoder_inputs
         as input,we should let it as long as possible to get enough result
         '''
-        encoder_inputs = []
-        decoder_inputs = []
-        target_weights = []
-
         for l in xrange(5):
         	encoder_inputs.append(tf.placeholder(tf.int32, shape=[batch_size],
                                                     name="encoder{0}".format(l)))
@@ -55,37 +54,39 @@ def build_generator(question):
             softmax_loss_function=None, 
             per_example_loss=False, name='model_with_buckets')
     #[decoder_inputs_len x batch_size x num_decoder_symbols]
-    print("outputs[0]")
-    print(outputs[0]) # 2*20 batch_size * num_symbol
+    #print("outputs[0]")
+    #print(outputs[0]) # 2*20 batch_size * num_symbol
     return outputs[0]
 
 # discriminator (model 2)
 def build_discriminator(true_ans, generated_ans, keep_prob):
+    '''
+    true_ans, generated_ans:[max_len,batch_size,num_symbol]
+    '''
     with tf.variable_scope("discriminator"):
         
         def sentence2state(sentence):
-            print("sentence")
-            print(sentence)#Tensor("true_ans:0", shape=(5, 2), dtype=int32)
-
             #sentence:[max_time, batch_size, num_decoder_symbols]
             #sequence_length:[batch_size]
             with tf.variable_scope("rnn_encoder"):
-                single_cell = tf.contrib.rnn.BasicLSTMCell(state_size)
+                cell = tf.contrib.rnn.BasicLSTMCell(state_size)
                 if num_layers > 1:
-                    cell = tf.contrib.rnn.MultiRNNCell([single_cell] * num_layers)
+                    cell = tf.contrib.rnn.MultiRNNCell([cell] * num_layers)
+                '''
+                cell.state_size:[num_layer * 2] (for c and h)
+                (LSTMStateTuple(c=512, h=512), 
+                LSTMStateTuple(c=512, h=512), 
+                LSTMStateTuple(c=512, h=512))
+                '''
                 outputs, state = tf.nn.dynamic_rnn(cell, sentence, 
                     sequence_length=None, initial_state=None,dtype=tf.float32,
                     time_major=True)
-                #print("cell")
-                #print(cell.state_size)
-                return state #[batch_size, cell.state_size]
+                #accumulate the state of each RNN layer
+                return (tf.reduce_sum(state,axis = 0))
         def state2sigmoid(state):
             h1_size = 512
             h2_size = 256
-            print("state")
-            print(state)
             res = tf.reshape(state,[batch_size,-1])
-            print(res)
             with tf.variable_scope("state2sigmoid"):
                 w1 = tf.Variable(tf.truncated_normal([num_layers * state_size, h1_size], stddev=0.1),name="d_w1", dtype=tf.float32)
                 b1 = tf.Variable(tf.zeros([h1_size]), name="d_b1", dtype=tf.float32)
@@ -99,10 +100,7 @@ def build_discriminator(true_ans, generated_ans, keep_prob):
                 return tf.nn.sigmoid(h3)
 
         with tf.variable_scope("twinsNN") as scope:
-            print("true ans")
-            print(true_ans) #[max_len ,batch_size]
-            print("fake")
-            print(generated_ans)
+        #true_ans, generated_ans: [max_len,batch_size,num_symbol]
             true_state = sentence2state(true_ans)
             scope.reuse_variables()
             fake_state = sentence2state(generated_ans)
@@ -121,33 +119,26 @@ def train():
     # 创建生成模型
     generated_ans = build_generator(question)
     # 创建判别模型
-    #generated_ans max_len[batch_size * num_symbol ] a list of 2D tensor
-    #true ans  max_len * batch_size
-    print("compare")
-    print(tf.one_hot(true_ans,num_symbols,on_value=1.0,off_value=0.0,axis=-1,dtype=tf.float32))
-    print(tf.convert_to_tensor(generated_ans))
     y_data, y_generated = build_discriminator(tf.one_hot(true_ans,num_symbols,
                                                             on_value=1.0,off_value=0.0,axis=-1,
                                                             dtype=tf.float32,name="onehot"), 
                                             tf.convert_to_tensor(generated_ans), keep_prob)
-
     # 损失函数的设置
     d_loss = - (tf.log(y_data) + tf.log(1 - y_generated))
     g_loss =  - tf.log(y_generated)
-    print("loss")
-    print(d_loss)
 
     optimizer = tf.train.AdamOptimizer(0.0001)
 
     d_params = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES,scope = "discriminator")
     g_params = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES,scope = "generator")
+
+    gard = optimizer.compute_gradients(d_loss,var_list=d_params)
+    print("gard ok")
     # 两个模型的优化函数
     d_trainer = optimizer.minimize(d_loss, var_list=d_params)
     g_trainer = optimizer.minimize(g_loss, var_list=g_params)
 
     init = tf.initialize_all_variables()
-
-#    saver = tf.train.Saver()
     # 启动默认图
     sess = tf.Session()
     # 初始化
@@ -160,10 +151,10 @@ def train():
             batch_question, batch_ans = ini_question, ini_ans
             input_feed = {}
             for l in xrange(5):#[encoder_size*batch_size]
-		        input_feed[self.encoder_inputs[l].name] = ini_question[l]
+		        input_feed[encoder_inputs[l].name] = ini_question[l]
             for l in xrange(5):
-		    	input_feed[self.decoder_inputs[l].name] = ini_ans[l]
-		    	input_feed[self.target_weights[l].name] = 1.0
+		    	input_feed[decoder_inputs[l].name] = ini_ans[l]
+		    	input_feed[target_weights[l].name] = 1.0
             sess.run(d_trainer,feed_dict=input_feed)
             sess.run(g_trainer,feed_dict=input_feed)
         gen_val = sess.run(generated_ans, feed_dict=input_feed)
