@@ -6,8 +6,9 @@ import shutil
 import dataset
 #save path
 output_path = "./ckpt"
-batch_size = 2
-embedding_size = 16
+res_path = "./res"
+batch_size = 64
+embedding_size = 128
 max_len = 80
 num_layers = 3
 num_symbols = 20000
@@ -17,9 +18,7 @@ to_restore = False
 '''
 test data
 '''
-ini_question = [[1,3],[2,3],[4,1],[5,3],[6,6]]
-ini_ans = [[2,2],[1,9],[7,1],[2,1],[3,3]]
-keep_prob = tf.constant(0.5,tf.float32, name="keep_prob")
+keep_prob = tf.constant(0.8,tf.float32, name="keep_prob")
 # generate (model 1)
 '''
 question is a tensor of shape [batch_size * max_sequence_len]
@@ -66,10 +65,10 @@ def build_generator(encoder_inputs,decoder_inputs,target_weights):
     #[decoder_inputs_len x batch_size x num_decoder_symbols]
     #[2*16]
     # [batch_size * num_symbol]
-    print("outputs")
+    #print("outputs")
     #print(tf.convert_to_tensor(outputs))
     t_w = tf.convert_to_tensor([w] * max_len)
-    print(tf.matmul(tf.convert_to_tensor(outputs), t_w) + b)
+    #print(tf.matmul(tf.convert_to_tensor(outputs), t_w) + b)
     return tf.matmul(tf.convert_to_tensor(outputs), t_w) + b
     #return outputs[BUCKET_ID] #return bucket-0's result
 
@@ -157,7 +156,7 @@ def train():
     g_params = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES,scope = "generator")
 
     gard = optimizer.compute_gradients(d_loss,var_list=d_params)
-    print("gard ok")
+    #print("gard ok")
     # 两个模型的优化函数
     d_trainer = optimizer.minimize(d_loss, var_list=d_params)
     g_trainer = optimizer.minimize(g_loss, var_list=g_params)
@@ -172,10 +171,13 @@ def train():
     sess.run(init)
     #load previous variables
     if to_restore:
+        print("reloading variables...")
         chkpt_fname = tf.train.latest_checkpoint(output_path)
         saver.restore(sess, chkpt_fname)
+    if os.path.exists(output_path) == False:
+            os.mkdir(output_path)
 
-    steps = 5
+    steps = 2
     max_epoch = 5
     get_data = dataset.DataProvider(pkl_path='./bdwm_data_token.pkl',
                             buckets_size=buckets_size,batch_size=batch_size)
@@ -187,8 +189,17 @@ def train():
             sess.run(d_trainer,feed_dict=feed_dict)
             sess.run(g_trainer,feed_dict=feed_dict)
         feed_dict, BUCKET_ID = data_iterator.next()
-        gen_val = sess.run(generated_ans, feed_dict=feed_dict)
-        print(gen_val)
+        gen_val, generate_loss, dis_loss= sess.run([generated_ans, g_loss,d_loss], feed_dict=feed_dict)
+        file_object = open(os.path.join(res_path,"epoch:%s.txt" % (i)), 'w')
+        #file_object.write("feed data")
+        #file_object.write(feed_dict)
+        #file_object.write("generated data")
+        #file_object.write(gen_val)
+        #file_object.close()
+        print("generate loss")
+        print(generate_loss)
+        print("dis loss")
+        print(dis_loss)
         sess.run(tf.assign(global_step, i + 1))
         saver.save(sess, os.path.join(output_path, "gan_model"), global_step=global_step)
 
