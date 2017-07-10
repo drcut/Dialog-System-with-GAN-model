@@ -4,7 +4,8 @@ import numpy as np
 import os
 import shutil
 import dataset
-
+#save path
+output_path = "./ckpt"
 batch_size = 2
 embedding_size = 16
 max_len = 80
@@ -12,6 +13,7 @@ num_layers = 3
 num_symbols = 20000
 state_size = 512
 buckets_size = [(5,5),(10,10),(20,20),(40,40),(80,80)]
+to_restore = False
 '''
 test data
 '''
@@ -39,10 +41,6 @@ def build_generator(encoder_inputs,decoder_inputs,target_weights):
         b = tf.get_variable("proj_b", [num_symbols])
         output_projection = (w, b)
 
-        def seq2seq_f(encoder_inputs, decoder_inputs):
-            return tf.contrib.legacy_seq2seq.embedding_attention_seq2seq(encoder_inputs, 
-                decoder_inputs, cell, num_symbols, num_symbols, 
-                embedding_size, output_projection=output_projection, feed_previous=True)
         '''
         input:
         encoder_inputs: A list of 1D int32 Tensors of shape [batch_size].
@@ -64,11 +62,15 @@ def build_generator(encoder_inputs,decoder_inputs,target_weights):
         '''
         outputs, losses = tf.contrib.legacy_seq2seq.embedding_attention_seq2seq(encoder_inputs, 
                 decoder_inputs, cell, num_symbols, num_symbols, 
-                embedding_size, output_projection=None, feed_previous=True)
+                embedding_size, output_projection=output_projection, feed_previous=True)
     #[decoder_inputs_len x batch_size x num_decoder_symbols]
-
+    #[2*16]
     # [batch_size * num_symbol]
-    return outputs
+    print("outputs")
+    #print(tf.convert_to_tensor(outputs))
+    t_w = tf.convert_to_tensor([w] * max_len)
+    print(tf.matmul(tf.convert_to_tensor(outputs), t_w) + b)
+    return tf.matmul(tf.convert_to_tensor(outputs), t_w) + b
     #return outputs[BUCKET_ID] #return bucket-0's result
 
 # discriminator (model 2)
@@ -161,10 +163,18 @@ def train():
     g_trainer = optimizer.minimize(g_loss, var_list=g_params)
 
     init = tf.initialize_all_variables()
+
+    # Create a saver.
+    saver = tf.train.Saver(var_list = None,max_to_keep = 5)
     # 启动默认图
     sess = tf.Session()
     # 初始化
     sess.run(init)
+    #load previous variables
+    if to_restore:
+        chkpt_fname = tf.train.latest_checkpoint(output_path)
+        saver.restore(sess, chkpt_fname)
+
     steps = 5
     max_epoch = 5
     get_data = dataset.DataProvider(pkl_path='./bdwm_data_token.pkl',
@@ -173,22 +183,14 @@ def train():
         data_iterator = get_data.get_batch()
         for j in np.arange(steps):
             print("epoch:%s, iter:%s" % (i, j))
-            '''
-            batch_question, batch_ans = ini_question, ini_ans
-            input_feed = {}
-            for l in xrange(5):#[encoder_size*batch_size]
-		        input_feed[encoder_inputs[l].name] = ini_question[l]
-            for l in xrange(5):
-		    	input_feed[decoder_inputs[l].name] = ini_ans[l]
-		    	input_feed[target_weights[l].name] = [1.0,1.0]
-            input_feed[true_ans.name] = ini_ans
-            '''
             feed_dict, BUCKET_ID = data_iterator.next()
             sess.run(d_trainer,feed_dict=feed_dict)
             sess.run(g_trainer,feed_dict=feed_dict)
-        gen_val = sess.run(generated_ans, feed_dict=input_feed)
+        feed_dict, BUCKET_ID = data_iterator.next()
+        gen_val = sess.run(generated_ans, feed_dict=feed_dict)
         print(gen_val)
         sess.run(tf.assign(global_step, i + 1))
+        saver.save(sess, os.path.join(output_path, "gan_model"), global_step=global_step)
 
 if __name__ == '__main__':
     train()
