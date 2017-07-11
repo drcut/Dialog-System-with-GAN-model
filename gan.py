@@ -147,7 +147,8 @@ def train():
                                                             dtype=tf.float32,name="onehot"), 
                                             tf.convert_to_tensor(generated_ans), keep_prob)
     # 损失函数的设置
-    d_loss = - (tf.log(y_data) + tf.log(1 - y_generated))
+    #d_loss = - (tf.log(y_data) + tf.log(1 - y_generated))
+    d_loss = - (tf.log(y_data) - tf.log(1 - y_generated))
     g_loss =  - tf.log(y_generated)
 
     optimizer = tf.train.AdamOptimizer(0.0001)
@@ -177,7 +178,7 @@ def train():
     if os.path.exists(output_path) == False:
             os.mkdir(output_path)
 
-    steps = 2
+    steps = 10
     max_epoch = 5
     get_data = dataset.DataProvider(pkl_path='./bdwm_data_token.pkl',
                             buckets_size=buckets_size,batch_size=batch_size)
@@ -187,19 +188,14 @@ def train():
             print("epoch:%s, iter:%s" % (i, j))
             feed_dict, BUCKET_ID = data_iterator.next()
             sess.run(d_trainer,feed_dict=feed_dict)
-            sess.run(g_trainer,feed_dict=feed_dict)
+        sess.run(g_trainer,feed_dict=feed_dict)
         feed_dict, BUCKET_ID = data_iterator.next()
-        gen_val, generate_loss, dis_loss= sess.run([generated_ans, g_loss,d_loss], feed_dict=feed_dict)
+        gen_val, true_p, fake_p = sess.run([generated_ans, y_data,y_generated], feed_dict=feed_dict)
         file_object = open(os.path.join(res_path,"epoch:%s.txt" % (i)), 'w')
-        #file_object.write("feed data")
-        #file_object.write(feed_dict)
-        #file_object.write("generated data")
-        #file_object.write(gen_val)
-        #file_object.close()
-        print("generate loss")
-        print(generate_loss)
-        print("dis loss")
-        print(dis_loss)
+        print("true data possible")
+        print(true_p)
+        print("fake data possible")
+        print(fake_p)
         sess.run(tf.assign(global_step, i + 1))
         saver.save(sess, os.path.join(output_path, "gan_model"), global_step=global_step)
 
