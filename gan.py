@@ -64,16 +64,6 @@ def build_generator(encoder_inputs,decoder_inputs,target_weights,bucket_id,seq_l
     #print("filled")
     #print(filled)
     #Tensor("mul:0", shape=(64, 20000), dtype=float32)
-    for _ in range(0,max_len-buckets[0][1]):
-        outputs[0].append(patch)
-    for _ in range(0,max_len-buckets[1][1]):
-        outputs[1].append(patch)
-    for _ in range(0,max_len-buckets[2][1]):
-        outputs[2].append(patch)
-    for _ in range(0,max_len-buckets[3][1]):
-        outputs[3].append(patch)
-    for _ in range(0,max_len-buckets[4][1]):
-        outputs[4].append(patch)
     #outputs[0].append([patch]*(max_len-buckets[0][1])) #a list of max_len's elements,
     #each with[batch_size * num_symbols]
     #print(outputs[0][70])
@@ -82,22 +72,32 @@ def build_generator(encoder_inputs,decoder_inputs,target_weights,bucket_id,seq_l
     #print(tf.argmax(tf.convert_to_tensor(outputs[0],dtype = tf.float32),axis = 2))
     #print("after test")
     def f0(): 
+        for _ in range(0,max_len-buckets[0][1]):
+            outputs[0].append(patch)
         #fake_ans = tf.argmax(tf.convert_to_tensor(outputs[0],dtype = tf.float32),axis = 2)
         #return tf.argmax(tf.convert_to_tensor(outputs[0],dtype = tf.float32),axis = 2)
         return tf.convert_to_tensor(outputs[0],dtype = tf.float32)
     def f1(): 
+        for _ in range(0,max_len-buckets[1][1]):
+            outputs[1].append(patch)
         #fake_ans = tf.argmax(tf.convert_to_tensor(outputs[1],dtype = tf.float32),axis = 2)
         #return tf.argmax(tf.convert_to_tensor(outputs[1],dtype = tf.float32),axis = 2)
         return tf.convert_to_tensor(outputs[1],dtype = tf.float32)
     def f2(): 
+        for _ in range(0,max_len-buckets[2][1]):
+            outputs[2].append(patch)
         #fake_ans = tf.argmax(tf.convert_to_tensor(outputs[2],dtype = tf.float32),axis = 2)
         #return tf.argmax(tf.convert_to_tensor(outputs[2],dtype = tf.float32),axis = 2)
         return tf.convert_to_tensor(outputs[2],dtype = tf.float32)
     def f3(): 
+        for _ in range(0,max_len-buckets[3][1]):
+            outputs[3].append(patch)
         #fake_ans = tf.argmax(tf.convert_to_tensor(outputs[3],dtype = tf.float32),axis = 2)
         #return tf.argmax(tf.convert_to_tensor(outputs[3],dtype = tf.float32),axis = 2)
         return tf.convert_to_tensor(outputs[3],dtype = tf.float32)
     def f4(): 
+        for _ in range(0,max_len-buckets[4][1]):
+            outputs[4].append(patch)
         #fake_ans = tf.argmax(tf.convert_to_tensor(outputs[4],dtype = tf.float32),axis = 2)
         #return tf.argmax(tf.convert_to_tensor(outputs[4],dtype = tf.float32),axis = 2)
         return tf.convert_to_tensor(outputs[4],dtype = tf.float32)
@@ -108,8 +108,8 @@ def build_generator(encoder_inputs,decoder_inputs,target_weights,bucket_id,seq_l
                 tf.equal(bucket_id, 3): f3},
                 default=f4, exclusive=True)
 
-    #print("r")
-    #print(r)
+    print("r")
+    print(r)
     return tf.reshape(r,[max_len,batch_size,num_symbols])
 
 # discriminator (model 2)
