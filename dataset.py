@@ -62,8 +62,8 @@ class DataProvider(object):
             feed_dict['decoder{}:0'.format(i)] = np.zeros(shape=self.batch_size, dtype='int32')
             feed_dict['weight{}:0'.format(i)] = np.zeros(shape=self.batch_size, dtype='float32')
 
-        #feed_dict['bucket_id'] = bucket_id
-
+        feed_dict['bucket_id:0'] = bucket_id
+        feed_dict['seq_len:0'] = self.buckets_size[bucket_id][1]
         return feed_dict
 
     def put_into_bucket(self, tid, pid):
