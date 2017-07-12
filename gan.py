@@ -4,6 +4,7 @@ import numpy as np
 import os
 import shutil
 import dataset
+from utils import Translator, seq2seq_onehot2label
 #save path
 output_path = "./ckpt"
 res_path = "./res"
@@ -224,6 +225,8 @@ def train():
     max_epoch = 5
     get_data = dataset.DataProvider(pkl_path='./bdwm_data_token.pkl',
                             buckets_size=buckets,batch_size=batch_size)
+    translator = Translator('./dict.txt')
+
     for i in range(sess.run(global_step), max_epoch):
         data_iterator = get_data.get_batch()
         for j in np.arange(steps):
@@ -234,7 +237,7 @@ def train():
         feed_dict, BUCKET_ID = data_iterator.next()
         #get gen val for the true bucket
         #gen_val = sess.run([mul_generated_ans[BUCKET_ID]], feed_dict=feed_dict)
-
+        translator.translate_and_print(seq2seq_onehot2label())
 
         '''
         file_object = open(os.path.join(res_path,"epoch:%s.txt" % (i)), 'w')
