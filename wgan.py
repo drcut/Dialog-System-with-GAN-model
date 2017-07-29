@@ -15,11 +15,12 @@ num_layers = 3
 num_symbols = 20000
 state_size = 512
 buckets = [(5,5),(10,10),(20,20),(40,40),(80,80)]
-to_restore = False
+to_restore = True
 max_len = buckets[-1][1]
 learning_rate = 0.0001
 CLIP_RANGE =[-0.01,0.01]
 CRITIC = 25
+max_epoch = 5
 '''
 test data
 '''
@@ -118,7 +119,7 @@ def build_discriminator(true_ans, generated_ans, keep_prob ,seq_len):
         w3 = tf.get_variable("w3", [h2_size, 1],initializer=tf.random_normal_initializer())
         b3 = tf.get_variable("b3", [1],initializer=tf.constant_initializer(0.0))
         h3 = tf.matmul(h2, w3) + b3
-        print(b3.name)
+        #print(b3.name)
         return h3
     with tf.variable_scope("discriminator"):
         def sentence2state(sentence):
@@ -185,7 +186,8 @@ def train():
     #clip discrim weights
     d_clip = [v.assign(tf.clip_by_value(v, CLIP_RANGE[0], CLIP_RANGE[1])) for v in d_params]
 
-    init = tf.initialize_all_variables()
+    #init = tf.initialize_all_variables()
+    init = tf.global_variables_initializer()
 
     # Create a saver.
     saver = tf.train.Saver(var_list = None,max_to_keep = 5)
@@ -202,24 +204,32 @@ def train():
     if os.path.exists(output_path) == False:
             os.mkdir(output_path)
 
-    steps = 5
-    max_epoch = 5
+    
     get_data = dataset.DataProvider(pkl_path='./bdwm_data_token.pkl',
                             buckets_size=buckets,batch_size=batch_size)
     translator = Translator('./dict.txt')
-
+    print("save ckpt")
+    saver.save(sess,output_path,global_step=global_step)
     for i in range(sess.run(global_step), max_epoch):
         data_iterator = get_data.get_batch()
         for j in np.arange(CRITIC):
             print("epoch:%s, iter:%s" % (i, j))
-            feed_dict, BUCKET_ID = data_iterator.next()
+            try:
+                feed_dict, BUCKET_ID = data_iterator.next()
+            except:
+                pass
             sess.run(d_trainer,feed_dict=feed_dict)
             sess.run(d_clip)
         sess.run(g_trainer,feed_dict=feed_dict)
-        feed_dict, BUCKET_ID = data_iterator.next()
+        try:
+            feed_dict, BUCKET_ID = data_iterator.next()
+        except:
+            pass
         #get gen val for the true bucket
         gen_val = sess.run(fake_ans, feed_dict=feed_dict)
         translator.translate_and_print(seq2seq_onehot2label(gen_val))
+        print("save ckpt")
+        saver.save(sess,output_path,global_step=global_step)
         
 if __name__ == '__main__':
     train()
