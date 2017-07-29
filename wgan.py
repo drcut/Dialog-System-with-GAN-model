@@ -97,43 +97,42 @@ def build_discriminator(true_ans, generated_ans, keep_prob ,seq_len):
     '''
     true_ans, generated_ans:[max_len,batch_size,num_symbol]
     '''
+    h1_size = 512
+    h2_size = 256
+    cell = tf.contrib.rnn.BasicLSTMCell(state_size)
+    if num_layers > 1:
+        cell = tf.contrib.rnn.MultiRNNCell([cell] * num_layers)
+    def seq2seq(sentence):
+        outputs, state = tf.nn.dynamic_rnn(cell, sentence, 
+                sequence_length=seq_len, initial_state=None,dtype=tf.float32,
+                time_major=True)
+        return state
+    def state2logit(state):
+        res = tf.reshape(state,[batch_size,-1])
+        w1 = tf.get_variable("w1", [state_size*2, h1_size],initializer=tf.random_normal_initializer())
+        b1 = tf.get_variable("b1", h1_size,initializer=tf.constant_initializer(0.0))
+        h1 = tf.nn.dropout(tf.nn.relu(tf.matmul(res, w1) + b1), keep_prob)
+        w2 = tf.get_variable("w2", [h1_size, h2_size],initializer=tf.random_normal_initializer())
+        b2 = tf.get_variable("b2", [h2_size],initializer=tf.constant_initializer(0.0))
+        h2 = tf.nn.dropout(tf.nn.relu(tf.matmul(h1, w2) + b2), keep_prob)
+        w3 = tf.get_variable("w3", [h2_size, 1],initializer=tf.random_normal_initializer())
+        b3 = tf.get_variable("b3", [1],initializer=tf.constant_initializer(0.0))
+        h3 = tf.matmul(h2, w3) + b3
+        print(b3.name)
+        return h3
     with tf.variable_scope("discriminator"):
         def sentence2state(sentence):
-            #sentence:[max_time, batch_size, num_decoder_symbols]
-            #sequence_length:[batch_size]
-            with tf.variable_scope("rnn_encoder"):
-                cell = tf.contrib.rnn.BasicLSTMCell(state_size)
-                if num_layers > 1:
-                    cell = tf.contrib.rnn.MultiRNNCell([cell] * num_layers)
-                outputs, state = tf.nn.dynamic_rnn(cell, sentence, 
-                    sequence_length=seq_len, initial_state=None,dtype=tf.float32,
-                    time_major=True)
-                #accumulate the state of each RNN layer
-                return (tf.reduce_sum(state,axis = 0))
-        def state2num(state):
-            h1_size = 512
-            h2_size = 256
-            res = tf.reshape(state,[batch_size,-1])
-            with tf.variable_scope("state2sigmoid"):
-                #state * 2 stand for c and h in lstm_state
-                w1 = tf.Variable(tf.truncated_normal([state_size*2, h1_size], stddev=0.1),name="d_w1", dtype=tf.float32)
-                b1 = tf.Variable(tf.zeros([h1_size]), name="d_b1", dtype=tf.float32)
-                h1 = tf.nn.dropout(tf.nn.relu(tf.matmul(res, w1) + b1), keep_prob)
-                w2 = tf.Variable(tf.truncated_normal([h1_size, h2_size], stddev=0.1), name="d_w2", dtype=tf.float32)
-                b2 = tf.Variable(tf.zeros([h2_size]), name="d_b2", dtype=tf.float32)
-                h2 = tf.nn.dropout(tf.nn.relu(tf.matmul(h1, w2) + b2), keep_prob)
-                w3 = tf.Variable(tf.truncated_normal([h2_size, 1], stddev=0.1), name="d_w3", dtype=tf.float32)
-                b3 = tf.Variable(tf.zeros([1]), name="d_b3", dtype=tf.float32)
-                h3 = tf.matmul(h2, w3) + b3
-                return h3
+            #with tf.variable_scope("rnn_encoder"): 
+            state = seq2seq(sentence)
+            return (tf.reduce_sum(state,axis = 0))
+        def state2sigmoid(state):
+            return state2logit(state)
 
         with tf.variable_scope("twinsNN") as scope:
-        #true_ans, generated_ans: [max_len,batch_size,num_symbol]
             true_state = sentence2state(true_ans)
-            scope.reuse_variables()
-            fake_state = sentence2state(generated_ans)
             true_pos = state2sigmoid(true_state)
             scope.reuse_variables()
+            fake_state = sentence2state(generated_ans)
             fake_pos = state2sigmoid(fake_state)
     return true_pos, fake_pos
 
@@ -179,7 +178,6 @@ def train():
     g_params = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES,scope = "generator")
 
     gard = optimizer.compute_gradients(d_loss,var_list=d_params)
-    #print("gard ok")
     # 两个模型的优化函数
     d_trainer = optimizer.minimize(d_loss, var_list=d_params)
     g_trainer = optimizer.minimize(g_loss, var_list=g_params)
