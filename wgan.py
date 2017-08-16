@@ -10,12 +10,11 @@ output_path = "./ckpt"
 res_path = "./res"
 batch_size = 64
 embedding_size = 128
-max_len = 80
 num_layers = 3
 num_symbols = 20000
 state_size = 512
 buckets = [(5,5),(10,10),(20,20),(40,40),(80,80)]
-to_restore = True
+to_restore = False
 max_len = buckets[-1][1]
 learning_rate = 0.0001
 CLIP_RANGE =[-0.01,0.01]
@@ -110,13 +109,13 @@ def build_discriminator(true_ans, generated_ans, keep_prob ,seq_len):
         return state
     def state2logit(state):
         res = tf.reshape(state,[batch_size,-1])
-        w1 = tf.get_variable("w1", [state_size*2, h1_size],initializer=tf.random_normal_initializer())
+        w1 = tf.get_variable("w1", [state_size, h1_size],initializer=tf.truncated_normal_initializer())
         b1 = tf.get_variable("b1", h1_size,initializer=tf.constant_initializer(0.0))
         h1 = tf.nn.dropout(tf.nn.relu(tf.matmul(res, w1) + b1), keep_prob)
-        w2 = tf.get_variable("w2", [h1_size, h2_size],initializer=tf.random_normal_initializer())
+        w2 = tf.get_variable("w2", [h1_size, h2_size],initializer=tf.truncated_normal_initializer())
         b2 = tf.get_variable("b2", [h2_size],initializer=tf.constant_initializer(0.0))
         h2 = tf.nn.dropout(tf.nn.relu(tf.matmul(h1, w2) + b2), keep_prob)
-        w3 = tf.get_variable("w3", [h2_size, 1],initializer=tf.random_normal_initializer())
+        w3 = tf.get_variable("w3", [h2_size, 1],initializer=tf.truncated_normal_initializer())
         b3 = tf.get_variable("b3", [1],initializer=tf.constant_initializer(0.0))
         h3 = tf.matmul(h2, w3) + b3
         #print(b3.name)
@@ -125,9 +124,13 @@ def build_discriminator(true_ans, generated_ans, keep_prob ,seq_len):
         def sentence2state(sentence):
             #with tf.variable_scope("rnn_encoder"): 
             state = seq2seq(sentence)
-            return (tf.reduce_sum(state,axis = 0))
+            return state[-1] #only perserve the last cell's state
+            #return (tf.reduce_sum(state,axis = 0))
         def state2sigmoid(state):
-            return state2logit(state)
+            tmp_state = tf.convert_to_tensor(state) #2*64*512
+            h_state = tf.slice(tmp_state, [1, 0, 0], [1, batch_size, state_size])
+            #print(tf.convert_to_tensor(state))
+            return state2logit(h_state)
 
         with tf.variable_scope("twinsNN") as scope:
             true_state = sentence2state(true_ans)
@@ -178,6 +181,7 @@ def train():
     d_params = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES,scope = "discriminator")
     g_params = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES,scope = "generator")
 
+    #print(d_params)
     gard = optimizer.compute_gradients(d_loss,var_list=d_params)
     # 两个模型的优化函数
     d_trainer = optimizer.minimize(d_loss, var_list=d_params)
@@ -197,7 +201,7 @@ def train():
     sess.run(init)
     sess.run(d_clip)
     #load previous variables
-    if to_restore:
+    if to_restore == True:
         print("reloading variables...")
         chkpt_fname = tf.train.latest_checkpoint(output_path)
         saver.restore(sess, chkpt_fname)
@@ -209,7 +213,7 @@ def train():
                             buckets_size=buckets,batch_size=batch_size)
     translator = Translator('./dict.txt')
     print("save ckpt")
-    saver.save(sess,output_path,global_step=global_step)
+    saver.save(sess,output_path+'model.ckpt',global_step=global_step)
     for i in range(sess.run(global_step), max_epoch):
         data_iterator = get_data.get_batch()
         for j in np.arange(CRITIC):
