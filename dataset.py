@@ -26,6 +26,12 @@ class DataProvider(object):
                     yield (self.build_feed_dict(bucket_id), bucket_id)
                     self.buckets[bucket_id] = []    # empty the bucket
 
+    def get_batch_wrapper(self):
+        while True:
+            temp = self.get_batch()
+            for i in temp:
+                yield  i
+
     def build_feed_dict(self, bucket_id):
         if len(self.buckets[bucket_id]) != self.batch_size:
             raise Exception('Instances in bucket {} not equal to batch_size'.format(bucket_id))

@@ -8,7 +8,7 @@ from utils import Translator, seq2seq_onehot2label
 #save path
 output_path = "./ckpt"
 res_path = "./res"
-batch_size = 64
+batch_size = 256
 embedding_size = 128
 num_layers = 3
 num_symbols = 20000
@@ -16,10 +16,10 @@ state_size = 512
 buckets = [(5,5),(10,10),(20,20),(40,40),(80,80)]
 to_restore = False
 max_len = buckets[-1][1]
-learning_rate = 0.0001
+learning_rate = 0.001
 CLIP_RANGE =[-0.01,0.01]
 CRITIC = 25
-max_epoch = 5
+max_epoch = 500
 '''
 test data
 '''
@@ -215,20 +215,20 @@ def train():
     print("save ckpt")
     saver.save(sess,output_path+'model.ckpt',global_step=global_step)
     for i in range(sess.run(global_step), max_epoch):
-        data_iterator = get_data.get_batch()
+        data_iterator = get_data.get_batch_wrapper()
         for j in np.arange(CRITIC):
             print("epoch:%s, iter:%s" % (i, j))
             try:
                 feed_dict, BUCKET_ID = data_iterator.next()
             except:
-                pass
+                print("out of feed")
             sess.run(d_trainer,feed_dict=feed_dict)
             sess.run(d_clip)
         sess.run(g_trainer,feed_dict=feed_dict)
         try:
             feed_dict, BUCKET_ID = data_iterator.next()
         except:
-            pass
+            print("out of feed")
         #get gen val for the true bucket
         gen_val = sess.run(fake_ans, feed_dict=feed_dict)
         translator.translate_and_print(seq2seq_onehot2label(gen_val))
