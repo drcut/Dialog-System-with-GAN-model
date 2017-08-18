@@ -26,4 +26,4 @@ class Translator(object):
 
     def translate_and_print(self, data):
         for sentence in self.translate(data):
-            print ''.join(sentence)
+            print ' '.join(sentence)

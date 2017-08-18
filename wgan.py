@@ -14,16 +14,17 @@ num_layers = 3
 num_symbols = 20000
 state_size = 512
 buckets = [(5,5),(10,10),(20,20),(40,40),(80,80)]
-to_restore = False
+to_restore = True
 max_len = buckets[-1][1]
 learning_rate = 0.001
 CLIP_RANGE =[-0.01,0.01]
 CRITIC = 25
 max_epoch = 500
+
 '''
 test data
 '''
-keep_prob = tf.constant(0.8,tf.float32, name="keep_prob")
+keep_prob = tf.constant(0.5,tf.float32, name="keep_prob")
 # generate (model 1)
 '''
 question is a tensor of shape [batch_size * max_sequence_len]
@@ -196,15 +197,22 @@ def train():
     # Create a saver.
     saver = tf.train.Saver(var_list = None,max_to_keep = 5)
     # 启动默认图
-    sess = tf.Session()
+    #sess = tf.Session()
+    config = tf.ConfigProto()
+    config.gpu_options.allow_growth = True
+    sess = tf.Session(config=config)
+    #gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=0.333)
+    #sess = tf.Session(config=tf.ConfigProto(gpu_options=gpu_options))
     # 初始化
     sess.run(init)
     sess.run(d_clip)
     #load previous variables
     if to_restore == True:
         print("reloading variables...")
-        chkpt_fname = tf.train.latest_checkpoint(output_path)
-        saver.restore(sess, chkpt_fname)
+        #chkpt_fname = tf.train.latest_checkpoint(output_path)
+        ckpt = tf.train.get_checkpoint_state(output_path)
+        #saver.restore(sess, chkpt_fname)
+        saver.restore(sess, ckpt.model_checkpoint_path)
     if os.path.exists(output_path) == False:
             os.mkdir(output_path)
 
@@ -213,7 +221,7 @@ def train():
                             buckets_size=buckets,batch_size=batch_size)
     translator = Translator('./dict.txt')
     print("save ckpt")
-    saver.save(sess,output_path+'model.ckpt',global_step=global_step)
+    saver.save(sess, os.path.join(output_path, 'model.ckpt'), global_step=global_step)
     for i in range(sess.run(global_step), max_epoch):
         data_iterator = get_data.get_batch_wrapper()
         for j in np.arange(CRITIC):
@@ -222,7 +230,7 @@ def train():
                 feed_dict, BUCKET_ID = data_iterator.next()
             except:
                 print("out of feed")
-            sess.run(d_trainer,feed_dict=feed_dict)
+            _,dis_loss = sess.run([d_trainer,d_loss],feed_dict=feed_dict)
             sess.run(d_clip)
         sess.run(g_trainer,feed_dict=feed_dict)
         try:
@@ -233,7 +241,7 @@ def train():
         gen_val = sess.run(fake_ans, feed_dict=feed_dict)
         translator.translate_and_print(seq2seq_onehot2label(gen_val))
         print("save ckpt")
-        saver.save(sess,output_path,global_step=global_step)
+        saver.save(sess,os.path.join(output_path,'model.ckpt'),global_step=global_step)
         
 if __name__ == '__main__':
     train()
