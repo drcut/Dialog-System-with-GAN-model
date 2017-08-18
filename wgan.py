@@ -232,6 +232,7 @@ def train():
                 print("out of feed")
             _,dis_loss = sess.run([d_trainer,d_loss],feed_dict=feed_dict)
             sess.run(d_clip)
+            print("d_loss:{}".format(dis_loss))
         sess.run(g_trainer,feed_dict=feed_dict)
         try:
             feed_dict, BUCKET_ID = data_iterator.next()
