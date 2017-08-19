@@ -24,6 +24,9 @@ class Translator(object):
 
         return r
 
-    def translate_and_print(self, data):
+    def translate_and_print(self, data,logger = None):
         for sentence in self.translate(data):
             print ' '.join(sentence)
+            if(logger):
+                logger.debug(' '.join(sentence))
+

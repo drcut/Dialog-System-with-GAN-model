@@ -3,8 +3,28 @@ import tensorflow as tf
 import numpy as np
 import os
 import shutil
+import logging
 import dataset
 from utils import Translator, seq2seq_onehot2label
+'''
+model size:
+embedding matrix: num_symbols * embedding_size
+generator:
+    output_project = embedding_size * num_symbols
+    cell: ??? relate to LSTM struct
+discriminator:
+    seq2state:
+        cell: ??? may be should use the cell of generator
+    state2logit:
+        state_size * h1_size + h1_size + h1_size * h2_size + h2_size +h2_size * 1 + 1
+'''
+logging.basicConfig(level=logging.DEBUG,
+                    format='%(asctime)s %(filename)s[line:%(lineno)d] %(levelname)s %(message)s',
+                    datefmt='%a, %d %b %Y %H:%M:%S',
+                    filename='./log_file/wgan.log',
+                    filemode='w')
+
+
 #save path
 output_path = "./ckpt"
 res_path = "./res"
@@ -12,14 +32,14 @@ batch_size = 256
 embedding_size = 128
 num_layers = 3
 num_symbols = 20000
-state_size = 512
+state_size = 256
 buckets = [(5,5),(10,10),(20,20),(40,40),(80,80)]
-to_restore = True
+to_restore = False
 max_len = buckets[-1][1]
 learning_rate = 0.001
 CLIP_RANGE =[-0.01,0.01]
 CRITIC = 25
-max_epoch = 500
+max_epoch = 4
 
 '''
 test data
@@ -98,8 +118,8 @@ def build_discriminator(true_ans, generated_ans, keep_prob ,seq_len):
     '''
     true_ans, generated_ans:[max_len,batch_size,num_symbol]
     '''
-    h1_size = 512
-    h2_size = 256
+    h1_size = 256
+    h2_size = 128
     cell = tf.contrib.rnn.BasicLSTMCell(state_size)
     if num_layers > 1:
         cell = tf.contrib.rnn.MultiRNNCell([cell] * num_layers)
@@ -119,18 +139,14 @@ def build_discriminator(true_ans, generated_ans, keep_prob ,seq_len):
         w3 = tf.get_variable("w3", [h2_size, 1],initializer=tf.truncated_normal_initializer())
         b3 = tf.get_variable("b3", [1],initializer=tf.constant_initializer(0.0))
         h3 = tf.matmul(h2, w3) + b3
-        #print(b3.name)
         return h3
     with tf.variable_scope("discriminator"):
         def sentence2state(sentence):
-            #with tf.variable_scope("rnn_encoder"): 
             state = seq2seq(sentence)
             return state[-1] #only perserve the last cell's state
-            #return (tf.reduce_sum(state,axis = 0))
         def state2sigmoid(state):
             tmp_state = tf.convert_to_tensor(state) #2*64*512
             h_state = tf.slice(tmp_state, [1, 0, 0], [1, batch_size, state_size])
-            #print(tf.convert_to_tensor(state))
             return state2logit(h_state)
 
         with tf.variable_scope("twinsNN") as scope:
@@ -159,7 +175,6 @@ def train():
     
     # return a list of different bucket,but only one bucket it what we need
     #[seq_len * batch_size]
-    #just to feed fake_ans
     fake_ans = build_generator(encoder_inputs,decoder_inputs,target_weights,
                                         bucket_id,seq_len)
     # 创建判别模型
@@ -191,9 +206,7 @@ def train():
     #clip discrim weights
     d_clip = [v.assign(tf.clip_by_value(v, CLIP_RANGE[0], CLIP_RANGE[1])) for v in d_params]
 
-    #init = tf.initialize_all_variables()
     init = tf.global_variables_initializer()
-
     # Create a saver.
     saver = tf.train.Saver(var_list = None,max_to_keep = 5)
     # 启动默认图
@@ -209,9 +222,8 @@ def train():
     #load previous variables
     if to_restore == True:
         print("reloading variables...")
-        #chkpt_fname = tf.train.latest_checkpoint(output_path)
+        logging.debug("reloading variables...")
         ckpt = tf.train.get_checkpoint_state(output_path)
-        #saver.restore(sess, chkpt_fname)
         saver.restore(sess, ckpt.model_checkpoint_path)
     if os.path.exists(output_path) == False:
             os.mkdir(output_path)
@@ -226,22 +238,27 @@ def train():
         data_iterator = get_data.get_batch_wrapper()
         for j in np.arange(CRITIC):
             print("epoch:%s, iter:%s" % (i, j))
+            logging.debug("epoch:%s, iter:%s" % (i, j))
             try:
                 feed_dict, BUCKET_ID = data_iterator.next()
-            except:
+            #except:
+            except StopIteration:
                 print("out of feed")
             _,dis_loss = sess.run([d_trainer,d_loss],feed_dict=feed_dict)
             sess.run(d_clip)
             print("d_loss:{}".format(dis_loss))
+            logging.debug("d_loss:{}".format(dis_loss))
         sess.run(g_trainer,feed_dict=feed_dict)
         try:
             feed_dict, BUCKET_ID = data_iterator.next()
-        except:
+        #except:\
+        except StopIteration:
             print("out of feed")
         #get gen val for the true bucket
         gen_val = sess.run(fake_ans, feed_dict=feed_dict)
-        translator.translate_and_print(seq2seq_onehot2label(gen_val))
+        translator.translate_and_print(seq2seq_onehot2label(gen_val),logger = logging)
         print("save ckpt")
+        logging.debug("save ckpt")
         saver.save(sess,os.path.join(output_path,'model.ckpt'),global_step=global_step)
         
 if __name__ == '__main__':
