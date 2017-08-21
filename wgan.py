@@ -111,16 +111,29 @@ def build_generator(encoder_inputs,decoder_inputs,target_weights,bucket_id,seq_l
                 tf.equal(bucket_id, 2): f2,
                 tf.equal(bucket_id, 3): f3},
                 default=f4, exclusive=True)
-    return tf.reshape(r,[max_len,batch_size,num_symbols])
+
+    return tf.nn.softmax(tf.reshape(r,[max_len,batch_size,num_symbols]))
 
 # discriminator (model 2)
-def build_discriminator(true_ans, generated_ans, keep_prob ,seq_len):
+def build_discriminator(true_ans_raw, generated_ans_raw, keep_prob ,seq_len):
     '''
     true_ans, generated_ans:[max_len,batch_size,num_symbol]
     '''
     h1_size = 256
     h2_size = 128
     cell = tf.contrib.rnn.BasicLSTMCell(state_size)
+    '''
+    embedding matrix:[num_symbol * emb_size]
+    '''
+    emb_matrix = tf.get_variable(name='emb_matrix',
+                    shape=[num_symbols,embedding_size],
+                    dtype=tf.float32,
+                    initializer=tf.truncated_normal_initializer(stddev=0.01))
+    true_ans = tf.multiply(tf.reshape(true_ans_raw, [max_len, batch_size, num_symbols, 1]), emb_matrix)
+    true_ans = tf.div(tf.reduce_sum(true_ans, axis=2), num_symbols)
+    generated_ans = tf.multiply(tf.reshape(generated_ans_raw, [max_len, batch_size, num_symbols, 1]), emb_matrix)
+    generated_ans = tf.div(tf.reduce_sum(generated_ans, axis=2), num_symbols)
+    #ture_ans,generated_ans:shape[max_len,batch_size,emb_size)
     if num_layers > 1:
         cell = tf.contrib.rnn.MultiRNNCell([cell] * num_layers)
     def seq2seq(sentence):
@@ -179,7 +192,6 @@ def train():
                                         bucket_id,seq_len)
     # 创建判别模型
     #true_ans, generated_ans:[max_len,batch_size,num_symbol]
-    
     y_data, y_generated = build_discriminator(tf.one_hot(true_ans,num_symbols,
                                                             on_value=1.0,off_value=0.0,axis=-1,
                                                             dtype=tf.float32,name="onehot"), 
