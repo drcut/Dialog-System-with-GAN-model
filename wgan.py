@@ -21,25 +21,25 @@ discriminator:
 logging.basicConfig(level=logging.DEBUG,
                     format='%(asctime)s %(filename)s[line:%(lineno)d] %(levelname)s %(message)s',
                     datefmt='%a, %d %b %Y %H:%M:%S',
-                    filename='./log_file/wgan.log',
+                    filename='./log_file/emb_wgan.log',
                     filemode='w')
 
 
 #save path
 output_path = "./ckpt"
 res_path = "./res"
-batch_size = 256
-embedding_size = 128
+batch_size = 16
+embedding_size = 96
 num_layers = 3
 num_symbols = 20000
 state_size = 256
-buckets = [(5,5),(10,10),(20,20),(40,40),(80,80)]
-to_restore = False
+buckets = [(10,10),(20,20),(40,40)]
+to_restore = True
 max_len = buckets[-1][1]
 learning_rate = 0.001
 CLIP_RANGE =[-0.01,0.01]
 CRITIC = 25
-max_epoch = 4
+max_epoch = 10
 
 '''
 test data
@@ -97,6 +97,8 @@ def build_generator(encoder_inputs,decoder_inputs,target_weights,bucket_id,seq_l
         for _ in range(0,max_len-buckets[2][1]):
             outputs[2].append(patch)
         return tf.convert_to_tensor(outputs[2],dtype = tf.float32)
+
+    '''
     def f3(): 
         for _ in range(0,max_len-buckets[3][1]):
             outputs[3].append(patch)
@@ -105,13 +107,16 @@ def build_generator(encoder_inputs,decoder_inputs,target_weights,bucket_id,seq_l
         for _ in range(0,max_len-buckets[4][1]):
             outputs[4].append(patch)
         return tf.convert_to_tensor(outputs[4],dtype = tf.float32)
-
+    
     r = tf.case({tf.equal(bucket_id, 0): f0,
                 tf.equal(bucket_id, 1): f1,
                 tf.equal(bucket_id, 2): f2,
                 tf.equal(bucket_id, 3): f3},
                 default=f4, exclusive=True)
-
+    '''
+    r = tf.case({tf.equal(bucket_id, 0): f0,
+                 tf.equal(bucket_id, 1): f1},
+                default=f2, exclusive=True)
     return tf.nn.softmax(tf.reshape(r,[max_len,batch_size,num_symbols]))
 
 # discriminator (model 2)
@@ -119,8 +124,8 @@ def build_discriminator(true_ans_raw, generated_ans_raw, keep_prob ,seq_len):
     '''
     true_ans, generated_ans:[max_len,batch_size,num_symbol]
     '''
-    h1_size = 256
-    h2_size = 128
+    h1_size = 64
+    h2_size = 32
     cell = tf.contrib.rnn.BasicLSTMCell(state_size)
     '''
     embedding matrix:[num_symbol * emb_size]
@@ -129,10 +134,10 @@ def build_discriminator(true_ans_raw, generated_ans_raw, keep_prob ,seq_len):
                     shape=[num_symbols,embedding_size],
                     dtype=tf.float32,
                     initializer=tf.truncated_normal_initializer(stddev=0.01))
-    true_ans = tf.multiply(tf.reshape(true_ans_raw, [max_len, batch_size, num_symbols, 1]), emb_matrix)
-    true_ans = tf.div(tf.reduce_sum(true_ans, axis=2), num_symbols)
-    generated_ans = tf.multiply(tf.reshape(generated_ans_raw, [max_len, batch_size, num_symbols, 1]), emb_matrix)
-    generated_ans = tf.div(tf.reduce_sum(generated_ans, axis=2), num_symbols)
+    true_ans = tf.nn.embedding_lookup(emb_matrix,true_ans_raw)
+
+    generated_ans = tf.reduce_mean(tf.multiply(tf.reshape(generated_ans_raw, [max_len, batch_size, num_symbols, 1]), emb_matrix),axis = 2)
+    #generated_ans = tf.div(tf.reduce_sum(generated_ans, axis=2), num_symbols)
     #ture_ans,generated_ans:shape[max_len,batch_size,emb_size)
     if num_layers > 1:
         cell = tf.contrib.rnn.MultiRNNCell([cell] * num_layers)
@@ -158,7 +163,7 @@ def build_discriminator(true_ans_raw, generated_ans_raw, keep_prob ,seq_len):
             state = seq2seq(sentence)
             return state[-1] #only perserve the last cell's state
         def state2sigmoid(state):
-            tmp_state = tf.convert_to_tensor(state) #2*64*512
+            tmp_state = tf.convert_to_tensor(state) #2*batch_size*emb_size
             h_state = tf.slice(tmp_state, [1, 0, 0], [1, batch_size, state_size])
             return state2logit(h_state)
 
@@ -191,10 +196,9 @@ def train():
     fake_ans = build_generator(encoder_inputs,decoder_inputs,target_weights,
                                         bucket_id,seq_len)
     # 创建判别模型
-    #true_ans, generated_ans:[max_len,batch_size,num_symbol]
-    y_data, y_generated = build_discriminator(tf.one_hot(true_ans,num_symbols,
-                                                            on_value=1.0,off_value=0.0,axis=-1,
-                                                            dtype=tf.float32,name="onehot"), 
+    #true_ans:[max_len,batch_size]
+    #generated_ans:[max_len,batch_size,num_symbol]
+    y_data, y_generated = build_discriminator(true_ans,
                                             fake_ans, 
                                             keep_prob ,seq_len)
     
@@ -222,10 +226,10 @@ def train():
     # Create a saver.
     saver = tf.train.Saver(var_list = None,max_to_keep = 5)
     # 启动默认图
-    #sess = tf.Session()
-    config = tf.ConfigProto()
-    config.gpu_options.allow_growth = True
-    sess = tf.Session(config=config)
+    sess = tf.Session()
+    #config = tf.ConfigProto()
+    #config.gpu_options.allow_growth = True
+    #sess = tf.Session(config=config)
     #gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=0.333)
     #sess = tf.Session(config=tf.ConfigProto(gpu_options=gpu_options))
     # 初始化
@@ -247,7 +251,7 @@ def train():
     print("save ckpt")
     saver.save(sess, os.path.join(output_path, 'model.ckpt'), global_step=global_step)
     for i in range(sess.run(global_step), max_epoch):
-        data_iterator = get_data.get_batch_wrapper()
+        data_iterator = get_data.get_batch()
         for j in np.arange(CRITIC):
             print("epoch:%s, iter:%s" % (i, j))
             logging.debug("epoch:%s, iter:%s" % (i, j))
@@ -256,7 +260,12 @@ def train():
             #except:
             except StopIteration:
                 print("out of feed")
+                get_data = dataset.DataProvider(pkl_path='./bdwm_data_token.pkl',
+                                                buckets_size=buckets, batch_size=batch_size)
+                data_iterator = get_data.get_batch()
+            print("d_train")
             _,dis_loss = sess.run([d_trainer,d_loss],feed_dict=feed_dict)
+            print("clip")
             sess.run(d_clip)
             print("d_loss:{}".format(dis_loss))
             logging.debug("d_loss:{}".format(dis_loss))
