@@ -21,7 +21,7 @@ discriminator:
 logging.basicConfig(level=logging.DEBUG,
                     format='%(asctime)s %(filename)s[line:%(lineno)d] %(levelname)s %(message)s',
                     datefmt='%a, %d %b %Y %H:%M:%S',
-                    filename='./log_file/emb_wgan.log',
+                    filename='./log_file/emb_wgan_bid2.log',
                     filemode='w')
 
 
@@ -30,21 +30,21 @@ output_path = "./ckpt"
 res_path = "./res"
 batch_size = 16
 embedding_size = 96
-num_layers = 3
+num_layers = 2
 num_symbols = 20000
 state_size = 256
 buckets = [(10,10),(20,20),(40,40)]
-to_restore = True
+to_restore = False
 max_len = buckets[-1][1]
-learning_rate = 0.001
-CLIP_RANGE =[-0.01,0.01]
-CRITIC = 25
-max_epoch = 10
+learning_rate = 5e-5#0.01
+CLIP_RANGE =[-0.1,0.1]
+CRITIC = 10
+max_epoch = 100000
 
 '''
 test data
 '''
-keep_prob = tf.constant(0.5,tf.float32, name="keep_prob")
+keep_prob = tf.constant(0.8,tf.float32, name="keep_prob")
 # generate (model 1)
 '''
 question is a tensor of shape [batch_size * max_sequence_len]
@@ -103,6 +103,7 @@ def build_generator(encoder_inputs,decoder_inputs,target_weights,bucket_id,seq_l
         for _ in range(0,max_len-buckets[3][1]):
             outputs[3].append(patch)
         return tf.convert_to_tensor(outputs[3],dtype = tf.float32)
+    
     def f4(): 
         for _ in range(0,max_len-buckets[4][1]):
             outputs[4].append(patch)
@@ -124,7 +125,7 @@ def build_discriminator(true_ans_raw, generated_ans_raw, keep_prob ,seq_len):
     '''
     true_ans, generated_ans:[max_len,batch_size,num_symbol]
     '''
-    h1_size = 64
+    h1_size = 32
     h2_size = 32
     cell = tf.contrib.rnn.BasicLSTMCell(state_size)
     '''
@@ -133,7 +134,7 @@ def build_discriminator(true_ans_raw, generated_ans_raw, keep_prob ,seq_len):
     emb_matrix = tf.get_variable(name='emb_matrix',
                     shape=[num_symbols,embedding_size],
                     dtype=tf.float32,
-                    initializer=tf.truncated_normal_initializer(stddev=0.01))
+                    initializer=tf.truncated_normal_initializer(stddev=0.1))
     true_ans = tf.nn.embedding_lookup(emb_matrix,true_ans_raw)
 
     generated_ans = tf.reduce_mean(tf.multiply(tf.reshape(generated_ans_raw, [max_len, batch_size, num_symbols, 1]), emb_matrix),axis = 2)
@@ -148,15 +149,18 @@ def build_discriminator(true_ans_raw, generated_ans_raw, keep_prob ,seq_len):
         return state
     def state2logit(state):
         res = tf.reshape(state,[batch_size,-1])
-        w1 = tf.get_variable("w1", [state_size, h1_size],initializer=tf.truncated_normal_initializer())
+        w1 = tf.get_variable("w1", [state_size, h1_size],initializer=tf.truncated_normal_initializer(stddev=0.1))
         b1 = tf.get_variable("b1", h1_size,initializer=tf.constant_initializer(0.0))
         h1 = tf.nn.dropout(tf.nn.relu(tf.matmul(res, w1) + b1), keep_prob)
+        '''
         w2 = tf.get_variable("w2", [h1_size, h2_size],initializer=tf.truncated_normal_initializer())
         b2 = tf.get_variable("b2", [h2_size],initializer=tf.constant_initializer(0.0))
         h2 = tf.nn.dropout(tf.nn.relu(tf.matmul(h1, w2) + b2), keep_prob)
-        w3 = tf.get_variable("w3", [h2_size, 1],initializer=tf.truncated_normal_initializer())
+        '''
+        #print(w1)
+        w3 = tf.get_variable("w3", [h1_size, 1],initializer=tf.truncated_normal_initializer())
         b3 = tf.get_variable("b3", [1],initializer=tf.constant_initializer(0.0))
-        h3 = tf.matmul(h2, w3) + b3
+        h3 = tf.matmul(h1, w3) + b3
         return h3
     with tf.variable_scope("discriminator"):
         def sentence2state(sentence):
@@ -205,19 +209,22 @@ def train():
     # 损失函数的设置
     d_loss_real = tf.reduce_mean(tf.scalar_mul(-1,y_data))
     d_loss_fake = tf.reduce_mean(y_generated)
-    d_loss = d_loss_fake + d_loss_real
+    #d_loss = d_loss_fake + d_loss_real
+    d_loss = tf.reduce_mean(y_generated - y_data)
     g_loss =  tf.reduce_mean(tf.scalar_mul(-1,y_generated))
 
-    optimizer = tf.train.RMSPropOptimizer(learning_rate)
+    optimizer_dis = tf.train.RMSPropOptimizer(learning_rate,name='RMSProp_dis')
+    optimizer_gen = tf.train.RMSPropOptimizer(learning_rate, name='RMSProp_gen')
 
     d_params = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES,scope = "discriminator")
     g_params = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES,scope = "generator")
 
     #print(d_params)
-    gard = optimizer.compute_gradients(d_loss,var_list=d_params)
+    #print(g_params)
+    #gard = optimizer.compute_gradients(d_loss,var_list=d_params)
     # 两个模型的优化函数
-    d_trainer = optimizer.minimize(d_loss, var_list=d_params)
-    g_trainer = optimizer.minimize(g_loss, var_list=g_params)
+    d_trainer = optimizer_dis.minimize(d_loss, var_list=d_params)
+    g_trainer = optimizer_gen.minimize(g_loss, var_list=g_params)
 
     #clip discrim weights
     d_clip = [v.assign(tf.clip_by_value(v, CLIP_RANGE[0], CLIP_RANGE[1])) for v in d_params]
@@ -251,7 +258,7 @@ def train():
     print("save ckpt")
     saver.save(sess, os.path.join(output_path, 'model.ckpt'), global_step=global_step)
     for i in range(sess.run(global_step), max_epoch):
-        data_iterator = get_data.get_batch()
+        data_iterator = get_data.get_batch_special_bucket_id(1)
         for j in np.arange(CRITIC):
             print("epoch:%s, iter:%s" % (i, j))
             logging.debug("epoch:%s, iter:%s" % (i, j))
@@ -262,19 +269,24 @@ def train():
                 print("out of feed")
                 get_data = dataset.DataProvider(pkl_path='./bdwm_data_token.pkl',
                                                 buckets_size=buckets, batch_size=batch_size)
-                data_iterator = get_data.get_batch()
-            print("d_train")
-            _,dis_loss = sess.run([d_trainer,d_loss],feed_dict=feed_dict)
-            print("clip")
+                data_iterator = get_data.get_batch_special_bucket_id(1)
+                feed_dict, BUCKET_ID = data_iterator.next()
+            _,dis_loss,fake_value,true_value = sess.run([d_trainer,d_loss,d_loss_real,d_loss_fake],feed_dict=feed_dict)
             sess.run(d_clip)
             print("d_loss:{}".format(dis_loss))
+            print("fake:{} true:{}".format(fake_value,true_value))
             logging.debug("d_loss:{}".format(dis_loss))
-        sess.run(g_trainer,feed_dict=feed_dict)
+        g_loss_val,_,d_loss_val = sess.run([g_loss,g_trainer,d_loss],feed_dict=feed_dict)
+        print("g_loss:{} d_loss:{}".format(g_loss_val,d_loss_val))
         try:
             feed_dict, BUCKET_ID = data_iterator.next()
-        #except:\
+
         except StopIteration:
             print("out of feed")
+            get_data = dataset.DataProvider(pkl_path='./bdwm_data_token.pkl',
+                                        buckets_size=buckets, batch_size=batch_size)
+            data_iterator = get_data.get_batch_special_bucket_id(1)
+            feed_dict, BUCKET_ID = data_iterator.next()
         #get gen val for the true bucket
         gen_val = sess.run(fake_ans, feed_dict=feed_dict)
         translator.translate_and_print(seq2seq_onehot2label(gen_val),logger = logging)

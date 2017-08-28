@@ -26,6 +26,17 @@ class DataProvider(object):
                     yield (self.build_feed_dict(bucket_id), bucket_id)
                     self.buckets[bucket_id] = []    # empty the bucket
 
+    def get_batch_special_bucket_id(self,bid):
+        np.random.shuffle(self.all_qa)
+
+        for tid, pid in self.all_qa:
+            bucket_id = self.put_into_bucket(tid, pid)
+            if bucket_id != -1 and bucket_id == bid:
+                self.buckets[bucket_id].append((tid, pid))
+                if len(self.buckets[bucket_id]) == self.batch_size:
+                    yield (self.build_feed_dict(bucket_id), bucket_id)
+                    self.buckets[bucket_id] = []    # empty the bucket
+
     def get_batch_wrapper(self):
         while True:
             temp = self.get_batch()
