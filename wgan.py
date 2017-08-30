@@ -34,11 +34,12 @@ num_layers = 2
 num_symbols = 20000
 state_size = 256
 buckets = [(10,10),(20,20),(40,40)]
-to_restore = False
+to_restore = True
 max_len = buckets[-1][1]
-learning_rate = 5e-5#0.01
+learning_rate_dis = 5e-5#0.01
+learning_rate_gen = 5e-2#0.01
 CLIP_RANGE =[-0.1,0.1]
-CRITIC = 10
+CRITIC = 5
 max_epoch = 100000
 
 '''
@@ -207,14 +208,16 @@ def train():
                                             keep_prob ,seq_len)
     
     # 损失函数的设置
-    d_loss_real = tf.reduce_mean(tf.scalar_mul(-1,y_data))
+    #d_loss_real = tf.reduce_mean(tf.scalar_mul(-1,y_data))
+    d_loss_real = tf.reduce_mean(y_data)
     d_loss_fake = tf.reduce_mean(y_generated)
     #d_loss = d_loss_fake + d_loss_real
-    d_loss = tf.reduce_mean(y_generated - y_data)
+    #d_loss = tf.reduce_mean(y_generated - y_data)
+    d_loss = d_loss_fake - d_loss_real
     g_loss =  tf.reduce_mean(tf.scalar_mul(-1,y_generated))
 
-    optimizer_dis = tf.train.RMSPropOptimizer(learning_rate,name='RMSProp_dis')
-    optimizer_gen = tf.train.RMSPropOptimizer(learning_rate, name='RMSProp_gen')
+    optimizer_dis = tf.train.RMSPropOptimizer(learning_rate_dis,name='RMSProp_dis')
+    optimizer_gen = tf.train.RMSPropOptimizer(learning_rate_gen, name='RMSProp_gen')
 
     d_params = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES,scope = "discriminator")
     g_params = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES,scope = "generator")
@@ -259,7 +262,11 @@ def train():
     saver.save(sess, os.path.join(output_path, 'model.ckpt'), global_step=global_step)
     for i in range(sess.run(global_step), max_epoch):
         data_iterator = get_data.get_batch_special_bucket_id(1)
-        for j in np.arange(CRITIC):
+        if i < 25 or i % 500 == 0:
+            citers = 100
+        else:
+            citers = CRITIC
+        for j in np.arange(citers):
             print("epoch:%s, iter:%s" % (i, j))
             logging.debug("epoch:%s, iter:%s" % (i, j))
             try:
@@ -271,18 +278,20 @@ def train():
                                                 buckets_size=buckets, batch_size=batch_size)
                 data_iterator = get_data.get_batch_special_bucket_id(1)
                 feed_dict, BUCKET_ID = data_iterator.next()
-            _,dis_loss,fake_value,true_value = sess.run([d_trainer,d_loss,d_loss_real,d_loss_fake],feed_dict=feed_dict)
+            _,dis_loss,fake_value,true_value = sess.run([d_trainer,d_loss,d_loss_fake,d_loss_real],feed_dict=feed_dict)
             sess.run(d_clip)
             print("d_loss:{}".format(dis_loss))
             print("fake:{} true:{}".format(fake_value,true_value))
             logging.debug("d_loss:{}".format(dis_loss))
+            logging.debug("fake:{} true:{}".format(fake_value,true_value))
         g_loss_val,_,d_loss_val = sess.run([g_loss,g_trainer,d_loss],feed_dict=feed_dict)
-        print("g_loss:{} d_loss:{}".format(g_loss_val,d_loss_val))
+        logging.debug("g_loss:{} d_loss:{}".format(g_loss_val,d_loss_val))
         try:
             feed_dict, BUCKET_ID = data_iterator.next()
 
         except StopIteration:
             print("out of feed")
+            logging.debug("out of feed")
             get_data = dataset.DataProvider(pkl_path='./bdwm_data_token.pkl',
                                         buckets_size=buckets, batch_size=batch_size)
             data_iterator = get_data.get_batch_special_bucket_id(1)
